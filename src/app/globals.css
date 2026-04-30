@@ -1,0 +1,97 @@
+@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Nunito:wght@400;600;700;800&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #fdf6ee;
+  font-family: 'Nunito', sans-serif;
+  color: #3d2c1e;
+}
+
+.app { min-height: 100vh; background: #fdf6ee; }
+
+/* HEADER */
+.header { text-align: center; padding: 32px 16px 8px; }
+.header-title { font-family: 'Ma Shan Zheng', cursive; font-size: 2.8rem; color: #c0392b; letter-spacing: 4px; line-height: 1.1; }
+.header-sub { font-size: 1rem; color: #8b6c56; margin-top: 4px; font-weight: 600; }
+
+/* GATE */
+.gate-overlay { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fdf6ee; padding: 24px; }
+.gate-card { background: #fff9f2; border-radius: 24px; padding: 40px 36px; max-width: 360px; width: 100%; border: 2px solid #f0d9c4; box-shadow: 0 8px 32px rgba(180,100,60,0.1); text-align: center; }
+.gate-icon { font-size: 3rem; margin-bottom: 12px; }
+.gate-title { font-family: 'Ma Shan Zheng', cursive; font-size: 2rem; color: #c0392b; margin-bottom: 4px; }
+.gate-sub { font-size: 0.88rem; color: #8b6c56; font-weight: 600; margin-bottom: 24px; }
+.gate-input { width: 100%; padding: 14px 16px; border-radius: 14px; border: 2px solid #e8c9a8; font-family: 'Nunito', sans-serif; font-size: 1rem; color: #3d2c1e; background: #fff; outline: none; text-align: center; letter-spacing: 3px; transition: border-color 0.15s; margin-bottom: 12px; }
+.gate-input:focus { border-color: #c0392b; }
+.gate-btn { width: 100%; padding: 14px; border-radius: 14px; border: none; background: linear-gradient(135deg, #c0392b, #e74c3c); color: #fff; font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 16px rgba(192,57,43,0.3); transition: transform 0.15s, box-shadow 0.15s; }
+.gate-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(192,57,43,0.35); }
+.gate-error { margin-top: 12px; font-size: 0.85rem; color: #c0392b; font-weight: 700; }
+.gate-hint { margin-top: 16px; font-size: 0.75rem; color: #b09080; }
+
+/* SETUP */
+.setup-card { max-width: 640px; margin: 24px auto; background: #fff9f2; border-radius: 24px; padding: 32px; border: 2px solid #f0d9c4; box-shadow: 0 8px 32px rgba(180,100,60,0.08); }
+.setup-section { margin-bottom: 24px; }
+.setup-label { font-weight: 800; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: #c0392b; margin-bottom: 10px; display: block; }
+.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { padding: 8px 16px; border-radius: 99px; border: 2px solid #e8c9a8; background: #fff; color: #6b4c38; font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.88rem; cursor: pointer; transition: all 0.15s; }
+.chip:hover { border-color: #c0392b; color: #c0392b; }
+.chip.selected { background: #c0392b; border-color: #c0392b; color: #fff; }
+.text-input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 2px solid #e8c9a8; font-family: 'Nunito', sans-serif; font-size: 1rem; color: #3d2c1e; background: #fff; outline: none; transition: border-color 0.15s; }
+.text-input:focus { border-color: #c0392b; }
+.generate-btn { width: 100%; padding: 16px; border-radius: 16px; border: none; background: linear-gradient(135deg, #c0392b, #e74c3c); color: #fff; font-family: 'Nunito', sans-serif; font-size: 1.1rem; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; transition: transform 0.15s, box-shadow 0.15s; box-shadow: 0 4px 16px rgba(192,57,43,0.3); margin-top: 8px; }
+.generate-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(192,57,43,0.35); }
+.generate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.error-banner { background: #fde8e6; border: 1px solid #f5a89e; border-radius: 12px; padding: 12px 16px; font-size: 0.9rem; color: #922b21; margin: 8px 0; font-weight: 600; }
+
+/* LOADING */
+.loading-screen { text-align: center; padding: 64px 24px; }
+.loading-lantern { font-size: 3rem; animation: swing 1.5s ease-in-out infinite; display: inline-block; }
+@keyframes swing { 0%,100% { transform: rotate(-10deg); } 50% { transform: rotate(10deg); } }
+.loading-text { font-family: 'Ma Shan Zheng', cursive; font-size: 1.4rem; color: #c0392b; margin-top: 16px; }
+.loading-sub { color: #8b6c56; font-size: 0.9rem; margin-top: 8px; }
+.progress-bar { width: 240px; height: 6px; background: #f0d9c4; border-radius: 99px; margin: 16px auto 0; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #c0392b, #e74c3c); border-radius: 99px; transition: width 0.4s ease; }
+
+/* BOOK */
+.book-controls { display: flex; justify-content: center; align-items: center; gap: 12px; padding: 16px; flex-wrap: wrap; }
+.ctrl-btn { padding: 8px 18px; border-radius: 99px; border: 2px solid #e8c9a8; background: #fff; font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.85rem; cursor: pointer; color: #6b4c38; transition: all 0.15s; }
+.ctrl-btn:hover { border-color: #c0392b; color: #c0392b; }
+.ctrl-btn.active { background: #c0392b; border-color: #c0392b; color: #fff; }
+.book-scroll { display: flex; gap: 24px; padding: 16px 32px 32px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+.book-scroll::-webkit-scrollbar { height: 6px; }
+.book-scroll::-webkit-scrollbar-track { background: #f0d9c4; border-radius: 99px; }
+.book-scroll::-webkit-scrollbar-thumb { background: #c0392b; border-radius: 99px; }
+.book-title-display { text-align: center; padding: 8px 16px 0; }
+.book-title-display h2 { font-family: 'Ma Shan Zheng', cursive; font-size: 2rem; color: #c0392b; }
+.hint-text { text-align: center; font-size: 0.78rem; color: #b09080; padding: 4px 0 8px; }
+
+/* PANEL */
+.panel-card { min-width: 300px; max-width: 300px; background: #fff9f2; border-radius: 20px; border: 2px solid #f0d9c4; overflow: hidden; scroll-snap-align: start; box-shadow: 0 4px 20px rgba(180,100,60,0.1); flex-shrink: 0; transition: transform 0.2s; }
+.panel-card:hover { transform: translateY(-4px); }
+.panel-img-wrap { position: relative; width: 100%; height: 200px; }
+.panel-number { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.45); color: #fff; font-size: 0.75rem; font-weight: 800; padding: 3px 10px; border-radius: 99px; z-index: 1; }
+.panel-illustration { width: 100%; height: 200px; object-fit: cover; display: block; }
+.panel-illustration-placeholder { width: 100%; height: 200px; display: flex; align-items: center; justify-content: center; font-size: 4rem; background: linear-gradient(135deg, #fdebd0, #fadbd8); }
+.panel-illustration-loading { width: 100%; height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(135deg, #fdebd0, #fadbd8); gap: 8px; }
+.img-spinner { width: 32px; height: 32px; border: 3px solid #f0d9c4; border-top-color: #c0392b; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.panel-body { padding: 16px; }
+.panel-pinyin { font-size: 0.78rem; color: #c0392b; letter-spacing: 1px; margin-bottom: 4px; min-height: 18px; font-weight: 600; }
+.panel-chinese { font-family: 'Ma Shan Zheng', cursive; font-size: 1.5rem; line-height: 1.6; color: #3d2c1e; margin-bottom: 8px; }
+.char-clickable { cursor: pointer; border-radius: 4px; padding: 0 1px; transition: background 0.1s, color 0.1s; display: inline-block; }
+.char-clickable:hover { background: #fde8e6; color: #c0392b; }
+.panel-english { font-size: 0.82rem; color: #9b7d6a; font-style: italic; min-height: 18px; }
+
+/* POPOVER */
+.popover-overlay { position: fixed; inset: 0; background: rgba(60,30,10,0.35); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; animation: fadeIn 0.15s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.popover-card { background: #fff9f2; border-radius: 20px; padding: 28px; max-width: 360px; width: 100%; border: 2px solid #f0d9c4; box-shadow: 0 16px 48px rgba(60,30,10,0.2); animation: slideUp 0.2s ease; }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.popover-char { font-family: 'Ma Shan Zheng', cursive; font-size: 3.5rem; color: #c0392b; line-height: 1; margin-bottom: 4px; }
+.popover-pinyin { font-size: 1.1rem; color: #8b6c56; font-weight: 700; margin-bottom: 12px; }
+.popover-def { font-size: 1rem; color: #3d2c1e; font-weight: 600; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #f0d9c4; }
+.popover-example-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 800; color: #c0392b; margin-bottom: 6px; }
+.popover-example-cn { font-family: 'Ma Shan Zheng', cursive; font-size: 1.1rem; color: #3d2c1e; margin-bottom: 2px; }
+.popover-example-en { font-size: 0.82rem; color: #9b7d6a; font-style: italic; margin-bottom: 16px; }
+.popover-close { width: 100%; padding: 10px; border-radius: 12px; border: 2px solid #e8c9a8; background: #fff; font-family: 'Nunito', sans-serif; font-weight: 700; cursor: pointer; color: #6b4c38; transition: all 0.15s; }
+.popover-close:hover { border-color: #c0392b; color: #c0392b; }
