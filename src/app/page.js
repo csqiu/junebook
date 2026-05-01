@@ -25,7 +25,7 @@ function PasswordGate({ onUnlock }) {
       <style>{`@keyframes shakeX { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }`}</style>
       <div className="gate-card" style={shake ? { animation: "shakeX 0.4s ease" } : {}}>
         <div className="gate-icon">🏮</div>
-        <div className="gate-title">小故事书</div>
+        <div className="gate-title">Junebook</div>
         <div className="gate-sub">Chinese Picture Book Generator</div>
         <input
           className="gate-input"
@@ -232,7 +232,7 @@ export default function Home() {
   return (
     <div className="app">
       <div className="header">
-        <div className="header-title">小故事书</div>
+        <div className="header-title">Junebook</div>
         <div className="header-sub">Chinese Picture Book Generator</div>
       </div>
 
