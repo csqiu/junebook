@@ -1,9 +1,10 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const APP_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD || "June";
+const PANEL_EMOJIS = ["🌸","🐼","🏮","🌙","🐉","🦋","🌈","🍵","🌺","🦊","🌿","🐠","🍁","🦁","🌻","🎋"];
 
-// ─── Password Gate ──────────────────────────────────────────────────────────
+// ─── Password Gate ────────────────────────────────────────────────────────────
 function PasswordGate({ onUnlock }) {
   const [input, setInput] = useState("");
   const [error, setError] = useState(false);
@@ -44,7 +45,7 @@ function PasswordGate({ onUnlock }) {
   );
 }
 
-// ─── Word Popover ───────────────────────────────────────────────────────────
+// ─── Word Popover ─────────────────────────────────────────────────────────────
 function WordPopover({ entry, onClose }) {
   if (!entry) return null;
   return (
@@ -66,7 +67,7 @@ function WordPopover({ entry, onClose }) {
   );
 }
 
-// ─── Clickable Chinese Text ─────────────────────────────────────────────────
+// ─── Clickable Chinese Text ───────────────────────────────────────────────────
 function ClickableText({ text, vocabulary, onWordClick }) {
   const chars = Array.from(text);
   return (
@@ -84,52 +85,53 @@ function ClickableText({ text, vocabulary, onWordClick }) {
   );
 }
 
-// ─── Panel Card ─────────────────────────────────────────────────────────────
-function PanelCard({ panel, showPinyin, showEnglish, onWordClick }) {
-  const emojis = ["🌸","🐼","🏮","🌙","🐉","🦋","🌈","🍵"];
+// ─── Full-Screen Panel ────────────────────────────────────────────────────────
+function PanelViewer({ panel, showPinyin, showEnglish, onWordClick, animDir }) {
+  const emoji = PANEL_EMOJIS[panel.panel_number % PANEL_EMOJIS.length];
   return (
-    <div className="panel-card">
-      <div className="panel-img-wrap">
-        <div className="panel-number">#{panel.panel_number}</div>
+    <div className="panel-full" data-anim={animDir}>
+      <div className="panel-full-img-wrap">
         {panel.imageStatus === "loading" && (
-          <div className="panel-illustration-loading">
+          <div className="panel-full-loading">
             <div className="img-spinner" />
-            <span style={{ fontSize: "0.75rem", color: "#8b6c56", fontWeight: 600 }}>Painting…</span>
+            <span style={{ fontSize: "0.8rem", color: "#8b6c56", fontWeight: 600 }}>Painting…</span>
           </div>
         )}
         {panel.imageStatus === "done" && panel.imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="panel-illustration" src={panel.imageUrl} alt={`Panel ${panel.panel_number}`} />
+          <img className="panel-full-img" src={panel.imageUrl} crossOrigin="anonymous" alt={`Panel ${panel.panel_number}`} />
         )}
         {(panel.imageStatus === "error" || panel.imageStatus === "none") && (
-          <div className="panel-illustration-placeholder">
+          <div className="panel-full-placeholder">
             {panel.imageError
-              ? <span style={{ fontSize: "0.7rem", color: "#c0392b", padding: "8px", textAlign: "center" }}>{panel.imageError}</span>
-              : emojis[panel.panel_number % emojis.length]}
+              ? <span style={{ fontSize: "0.75rem", color: "#c0392b", padding: "16px", textAlign: "center" }}>{panel.imageError}</span>
+              : emoji}
           </div>
         )}
       </div>
-      <div className="panel-body">
-        {showPinyin && <div className="panel-pinyin">{panel.pinyin}</div>}
-        <div className="panel-chinese">
+      <div className="panel-full-body">
+        {showPinyin && <div className="panel-full-pinyin">{panel.pinyin}</div>}
+        <div className="panel-full-chinese">
           <ClickableText text={panel.chinese_text} vocabulary={panel.vocabulary || []} onWordClick={onWordClick} />
         </div>
-        {showEnglish && <div className="panel-english">{panel.english_translation}</div>}
+        {showEnglish && <div className="panel-full-english">{panel.english_translation}</div>}
+        <div className="panel-full-hint">Tap any character to look it up ✨</div>
       </div>
     </div>
   );
 }
 
-// ─── Main App ───────────────────────────────────────────────────────────────
+// ─── Main App ─────────────────────────────────────────────────────────────────
 export default function Home() {
   const [unlocked, setUnlocked] = useState(false);
-  const [length, setLength] = useState("medium");
+  const [panelCount, setPanelCount] = useState(6);
   const [difficulty, setDifficulty] = useState("beginner");
   const [showPinyin, setShowPinyin] = useState(true);
   const [showEnglish, setShowEnglish] = useState(true);
   const [themes, setThemes] = useState(["animals", "family"]);
   const [tone, setTone] = useState("heartwarming");
   const [mainChar, setMainChar] = useState("");
+  const [additionalElements, setAdditionalElements] = useState("");
   const [phase, setPhase] = useState("setup");
   const [story, setStory] = useState(null);
   const [panels, setPanels] = useState([]);
@@ -137,13 +139,93 @@ export default function Home() {
   const [loadingMsg, setLoadingMsg] = useState("");
   const [progress, setProgress] = useState(0);
   const [popoverEntry, setPopoverEntry] = useState(null);
+  const [currentPanelIdx, setCurrentPanelIdx] = useState(0);
+  const [animDir, setAnimDir] = useState("none");
+  const [animKey, setAnimKey] = useState(0);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
   const lookupCache = useRef({});
+  const pdfRef = useRef(null);
+  const touchStartX = useRef(null);
 
   const themeOptions = ["animals","family","seasons","adventure","friendship","food","magic","bedtime"];
   const toneOptions = ["heartwarming","funny","educational","calming"];
 
   function toggleTheme(t) {
     setThemes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+  }
+
+  function goNext() {
+    if (currentPanelIdx < panels.length - 1) {
+      setAnimDir("left");
+      setAnimKey(k => k + 1);
+      setCurrentPanelIdx(i => i + 1);
+    }
+  }
+
+  function goPrev() {
+    if (currentPanelIdx > 0) {
+      setAnimDir("right");
+      setAnimKey(k => k + 1);
+      setCurrentPanelIdx(i => i - 1);
+    }
+  }
+
+  function handleTouchStart(e) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+
+  function handleTouchEnd(e) {
+    if (touchStartX.current === null) return;
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) diff > 0 ? goNext() : goPrev();
+    touchStartX.current = null;
+  }
+
+  useEffect(() => {
+    if (phase !== "book") return;
+    function onKey(e) {
+      if (e.key === "ArrowRight") goNext();
+      if (e.key === "ArrowLeft") goPrev();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  async function downloadPDF() {
+    setDownloadingPDF(true);
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: html2canvas } = await import("html2canvas");
+
+      const container = pdfRef.current;
+      if (!container) return;
+
+      const items = container.querySelectorAll(".pdf-panel-item");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = pdf.internal.pageSize.getHeight();
+
+      for (let i = 0; i < items.length; i++) {
+        const canvas = await html2canvas(items[i], {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#fdf6ee",
+          logging: false,
+        });
+        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, 0, pdfW, pdfH);
+      }
+
+      const filename = story.title_english
+        ? `${story.title_english.replace(/\s+/g, "-")}.pdf`
+        : "junebook.pdf";
+      pdf.save(filename);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+    } finally {
+      setDownloadingPDF(false);
+    }
   }
 
   async function handleWordClick(char, vocabulary) {
@@ -171,13 +253,15 @@ export default function Home() {
     setPhase("loading");
     setProgress(10);
     setLoadingMsg("Writing your story…");
+    setCurrentPanelIdx(0);
+    setAnimDir("none");
+    setAnimKey(0);
 
     try {
-      // 1. Generate story
       const storyRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ length, difficulty, themes, tone, mainChar }),
+        body: JSON.stringify({ panelCount, difficulty, themes, tone, mainChar, additionalElements }),
       });
       const storyData = await storyRes.json();
       if (storyData.error) throw new Error(storyData.error);
@@ -185,7 +269,6 @@ export default function Home() {
       setStory(storyData);
       setProgress(40);
 
-      // 2. Init panels
       const initPanels = storyData.panels.map(p => ({
         ...p,
         imageStatus: "loading",
@@ -195,7 +278,6 @@ export default function Home() {
       setPhase("book");
       setProgress(60);
 
-      // 3. Generate images in parallel
       setLoadingMsg("Painting illustrations…");
       const total = storyData.panels.length;
 
@@ -220,32 +302,52 @@ export default function Home() {
       }));
 
       setProgress(100);
-
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
       setPhase("setup");
     }
   }
 
+  function resetToSetup() {
+    setPhase("setup");
+    setStory(null);
+    setPanels([]);
+    setError("");
+    setCurrentPanelIdx(0);
+    setAnimDir("none");
+  }
+
   if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />;
 
   return (
     <div className="app">
-      <div className="header">
-        <div className="header-title">Junebook</div>
-        <div className="header-sub">Chinese Picture Book Generator</div>
-      </div>
 
+      {/* ── Setup & Loading share the regular header ── */}
+      {phase !== "book" && (
+        <div className="header">
+          <div className="header-title">Junebook</div>
+          <div className="header-sub">Chinese Picture Book Generator</div>
+        </div>
+      )}
+
+      {/* ── Setup ── */}
       {phase === "setup" && (
         <div className="setup-card">
           {error && <div className="error-banner">⚠️ {error}</div>}
 
           <div className="setup-section">
-            <span className="setup-label">📖 Story Length</span>
-            <div className="chip-group">
-              {[["short","Short (4 panels)"],["medium","Medium (6 panels)"],["long","Long (8 panels)"]].map(([v,l]) => (
-                <button key={v} className={`chip ${length===v?"selected":""}`} onClick={() => setLength(v)}>{l}</button>
-              ))}
+            <span className="setup-label">📖 Number of Pages</span>
+            <div className="panel-count-row">
+              <input
+                className="panel-count-slider"
+                type="range"
+                min={4}
+                max={16}
+                step={1}
+                value={panelCount}
+                onChange={e => setPanelCount(Number(e.target.value))}
+              />
+              <span className="panel-count-val">{panelCount}</span>
             </div>
           </div>
 
@@ -287,13 +389,23 @@ export default function Home() {
           </div>
 
           <div className="setup-section">
+            <span className="setup-label">✨ Additional Story Elements</span>
+            <textarea
+              className="text-area"
+              placeholder='e.g. "Set during Mid-Autumn Festival. Include a wise old tortoise. The story ends with a lesson about sharing."'
+              value={additionalElements}
+              onChange={e => setAdditionalElements(e.target.value)}
+            />
+          </div>
+
+          <div className="setup-section">
             <span className="setup-label">⚙️ Display Options</span>
             <div className="chip-group">
               <button className={`chip ${showPinyin?"selected":""}`} onClick={() => setShowPinyin(p=>!p)}>
-                {showPinyin ? "✓" : ""} Show Pinyin
+                {showPinyin ? "✓ " : ""}Show Pinyin
               </button>
               <button className={`chip ${showEnglish?"selected":""}`} onClick={() => setShowEnglish(p=>!p)}>
-                {showEnglish ? "✓" : ""} Show English
+                {showEnglish ? "✓ " : ""}Show English
               </button>
             </div>
           </div>
@@ -304,6 +416,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── Loading ── */}
       {phase === "loading" && (
         <div className="loading-screen">
           <div className="loading-lantern">🏮</div>
@@ -315,43 +428,81 @@ export default function Home() {
         </div>
       )}
 
-      {phase === "book" && story && (
-        <>
-          <div className="book-title-display">
-            <h2>{story.title}</h2>
-            <div style={{ color: "#8b6c56", fontSize: "0.9rem", fontWeight: 600 }}>
-              {story.title_pinyin} · {story.title_english}
+      {/* ── Book Viewer ── */}
+      {phase === "book" && story && panels.length > 0 && (
+        <div
+          className="book-viewer"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Header */}
+          <div className="viewer-header">
+            <span className="viewer-brand">Junebook</span>
+            <div className="viewer-title-block">
+              <div className="viewer-title-cn">{story.title}</div>
+              <div className="viewer-title-sub">{story.title_pinyin} · {story.title_english}</div>
+            </div>
+            <button className="viewer-close-btn" onClick={resetToSetup} title="New story">✕</button>
+          </div>
+
+          {/* Full-screen panel */}
+          <div className="panel-full-wrap">
+            <PanelViewer
+              key={animKey}
+              panel={panels[currentPanelIdx]}
+              showPinyin={showPinyin}
+              showEnglish={showEnglish}
+              onWordClick={handleWordClick}
+              animDir={animDir}
+            />
+          </div>
+
+          {/* Navigation */}
+          <div className="viewer-nav">
+            <div className="viewer-nav-row">
+              <button className="nav-arrow" onClick={goPrev} disabled={currentPanelIdx === 0}>←</button>
+              <span className="nav-page-info">{currentPanelIdx + 1} / {panels.length}</span>
+              <button className="nav-arrow" onClick={goNext} disabled={currentPanelIdx === panels.length - 1}>→</button>
+            </div>
+            <div className="viewer-nav-opts">
+              <button className={`ctrl-btn ${showPinyin?"active":""}`} onClick={() => setShowPinyin(p=>!p)}>
+                {showPinyin ? "✓ " : ""}Pinyin
+              </button>
+              <button className={`ctrl-btn ${showEnglish?"active":""}`} onClick={() => setShowEnglish(p=>!p)}>
+                {showEnglish ? "✓ " : ""}English
+              </button>
+              <button className="ctrl-btn pdf-btn" onClick={downloadPDF} disabled={downloadingPDF}>
+                {downloadingPDF ? "⏳ Saving…" : "↓ PDF"}
+              </button>
             </div>
           </div>
 
-          <div className="book-controls">
-            <button className={`ctrl-btn ${showPinyin?"active":""}`} onClick={() => setShowPinyin(p=>!p)}>
-              {showPinyin ? "✓ Pinyin" : "Pinyin"}
-            </button>
-            <button className={`ctrl-btn ${showEnglish?"active":""}`} onClick={() => setShowEnglish(p=>!p)}>
-              {showEnglish ? "✓ English" : "English"}
-            </button>
-            <button className="ctrl-btn" onClick={() => { setPhase("setup"); setStory(null); setPanels([]); setError(""); }}>
-              ← New Story
-            </button>
+          {/* Hidden PDF render container */}
+          <div ref={pdfRef} className="pdf-hidden-container" aria-hidden="true">
+            {panels.map((panel, i) => {
+              const emoji = PANEL_EMOJIS[panel.panel_number % PANEL_EMOJIS.length];
+              return (
+                <div key={i} className="pdf-panel-item">
+                  {panel.imageStatus === "done" && panel.imageUrl
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img className="pdf-panel-img" src={panel.imageUrl} crossOrigin="anonymous" alt="" />
+                    : <div className="pdf-panel-placeholder">{emoji}</div>
+                  }
+                  <div className="pdf-panel-body">
+                    <div className="pdf-panel-page">Page {panel.panel_number} of {panels.length}</div>
+                    {showPinyin && <div className="pdf-panel-pinyin">{panel.pinyin}</div>}
+                    <div className="pdf-panel-chinese">{panel.chinese_text}</div>
+                    {showEnglish && <div className="pdf-panel-english">{panel.english_translation}</div>}
+                    <div className="pdf-panel-branding">Junebook · {story.title_english}</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-
-          <div className="hint-text">Tap any Chinese character to learn its meaning ✨</div>
-
-          <div className="book-scroll">
-            {panels.map((panel, i) => (
-              <PanelCard
-                key={i}
-                panel={panel}
-                showPinyin={showPinyin}
-                showEnglish={showEnglish}
-                onWordClick={handleWordClick}
-              />
-            ))}
-          </div>
-        </>
+        </div>
       )}
 
+      {/* ── Word Popover ── */}
       {popoverEntry && (
         <WordPopover entry={popoverEntry} onClose={() => setPopoverEntry(null)} />
       )}

@@ -1,18 +1,23 @@
 export async function POST(request) {
-  const { length, difficulty, themes, tone, mainChar } = await request.json();
+  const { panelCount, difficulty, themes, tone, mainChar, additionalElements } = await request.json();
 
-  const panelCount = length === "short" ? 4 : length === "medium" ? 6 : 8;
+  const count = Math.min(Math.max(parseInt(panelCount) || 6, 4), 16);
   const hsk = difficulty === "beginner" ? "HSK 1-2 (very simple, ~300 characters)" :
               difficulty === "intermediate" ? "HSK 3-4 (~1200 characters)" :
               "HSK 5-6 (~2500 characters)";
 
+  const extraLine = additionalElements?.trim()
+    ? `- Additional story elements: ${additionalElements.trim()}`
+    : "";
+
   const prompt = `You are a children's book author creating a Chinese picture book.
 
-Generate a ${panelCount}-panel picture book story with these parameters:
+Generate a ${count}-panel picture book story with these parameters:
 - HSK level: ${hsk}
 - Themes: ${themes.join(", ")}
 - Main character: ${mainChar || "a little rabbit"}
 - Tone: ${tone}
+${extraLine}
 
 Return ONLY valid JSON (no markdown, no backticks) in this exact structure:
 {
@@ -50,7 +55,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 8000,
+      max_tokens: 16000,
       system: "You are a Chinese children's book author. Return only valid JSON with no markdown, no code blocks, no extra text. Never use smart quotes inside JSON values.",
       messages: [{ role: "user", content: prompt }],
     }),
@@ -65,8 +70,8 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
   const raw = data.content.map((b) => b.text || "").join("");
   const clean = raw
     .replace(/```json|```/g, "")
-    .replace(/\u2018|\u2019/g, "'")
-    .replace(/\u201C|\u201D/g, '"')
+    .replace(/‘|’/g, "'")
+    .replace(/“|”/g, '"')
     .trim();
 
   try {
