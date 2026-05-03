@@ -267,11 +267,9 @@ ruby { display: inline-flex; flex-direction: column-reverse; align-items: center
 }
 .pdf-panel-item {
   width: 595px;
-  height: 842px;
   background: #fdf6ee;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   font-family: 'Nunito', sans-serif;
 }
 .pdf-panel-img { width: 100%; height: 420px; object-fit: cover; display: block; }

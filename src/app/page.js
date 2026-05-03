@@ -222,10 +222,9 @@ export default function Home() {
       if (!container) return;
 
       const items = container.querySelectorAll(".pdf-panel-item");
-      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-      const pdfW = pdf.internal.pageSize.getWidth();
-      const pdfH = pdf.internal.pageSize.getHeight();
 
+      // Capture all panels first at natural height
+      const canvases = [];
       for (let i = 0; i < items.length; i++) {
         const canvas = await html2canvas(items[i], {
           scale: 2,
@@ -233,9 +232,21 @@ export default function Home() {
           backgroundColor: "#fdf6ee",
           logging: false,
         });
-        const imgData = canvas.toDataURL("image/jpeg", 0.92);
-        if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, 0, pdfW, pdfH);
+        canvases.push(canvas);
+      }
+
+      // Build PDF with each page sized to its panel's actual content height
+      const ptWidth = 595.28; // A4 width in points
+      const scale = ptWidth / canvases[0].width;
+      const firstPageH = Math.ceil(canvases[0].height * scale);
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: [ptWidth, firstPageH] });
+
+      for (let i = 0; i < canvases.length; i++) {
+        const pageH = Math.ceil(canvases[i].height * scale);
+        if (i > 0) pdf.addPage([ptWidth, pageH]);
+        const imgData = canvases[i].toDataURL("image/jpeg", 0.92);
+        pdf.addImage(imgData, "JPEG", 0, 0, ptWidth, pageH);
       }
 
       const filename = story.title_english
