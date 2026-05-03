@@ -24,14 +24,13 @@ Return ONLY valid JSON (no markdown, no backticks) in this exact structure:
   "title": "Story title in Chinese",
   "title_pinyin": "pinyin of title",
   "title_english": "English title",
-  "character_sheet": "One sentence describing the main character's permanent visual appearance for illustration consistency — species, size, colors, clothing, and one distinctive feature. Example: 'Mei is a small white rabbit with pink inner ears, wearing a red qipao with gold trim and a yellow flower clip on her right ear.'",
+  "character_sheet": "One sentence describing the main character's permanent visual appearance for illustration consistency — species, size, colors, clothing, and one distinctive feature.",
   "panels": [
     {
       "panel_number": 1,
-      "illustration_prompt": "A vivid scene for a children's watercolor illustration: describe the setting, action, mood, and colors. Do NOT redescribe the main character here — their appearance is provided separately. Keep it under 40 words.",
+      "illustration_prompt": "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT redescribe the main character — their appearance is provided separately. Under 40 words.",
       "chinese_text": "Chinese sentence(s) for this panel",
-      "pinyin": "full sentence pinyin with tone marks (flat string, for reference)",
-      "character_pinyin": [{"char": "我", "pinyin": "wǒ"}, {"char": "爱", "pinyin": "ài"}],
+      "pinyin": "full sentence pinyin with tone marks",
       "english_translation": "English translation",
       "vocabulary": [
         {
@@ -69,11 +68,17 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
   }
 
   const data = await res.json();
+
+  if (data.stop_reason === "max_tokens") {
+    return Response.json({ error: "Story was too long to generate. Try fewer pages." }, { status: 500 });
+  }
+
   const raw = data.content.map((b) => b.text || "").join("");
   const clean = raw
     .replace(/```json|```/g, "")
     .replace(/‘|’/g, "'")
     .replace(/“|”/g, '"')
+    .replace(/,\s*([}\]])/g, "$1") // remove trailing commas
     .trim();
 
   function injectCharacterSheet(story) {
@@ -87,8 +92,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
   }
 
   try {
-    const story = JSON.parse(clean);
-    return Response.json(injectCharacterSheet(story));
+    return Response.json(injectCharacterSheet(JSON.parse(clean)));
   } catch {
     const match = clean.match(/\{[\s\S]*\}/);
     if (match) {
@@ -96,6 +100,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
         return Response.json(injectCharacterSheet(JSON.parse(match[0])));
       } catch {}
     }
-    return Response.json({ error: "Failed to parse story JSON. Please try again." }, { status: 500 });
+    console.error("JSON parse failed. Raw response:", raw.slice(0, 500));
+    return Response.json({ error: "Failed to parse story. Please try again." }, { status: 500 });
   }
 }

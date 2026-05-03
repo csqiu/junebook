@@ -45,6 +45,14 @@ function PasswordGate({ onUnlock }) {
   );
 }
 
+// ─── Build per-character pinyin from flat sentence pinyin ─────────────────────
+function buildCharacterPinyin(chineseText, flatPinyin) {
+  if (!flatPinyin || !chineseText) return [];
+  const syllables = flatPinyin.trim().split(/\s+/);
+  const chars = Array.from(chineseText).filter(ch => !/[\s，。！？、：；""''【】（）a-zA-Z0-9]/u.test(ch));
+  return chars.map((char, i) => ({ char, pinyin: syllables[i] || "" }));
+}
+
 // ─── Word Popover ─────────────────────────────────────────────────────────────
 function WordPopover({ entry, onClose }) {
   if (!entry) return null;
@@ -303,6 +311,7 @@ export default function Home() {
 
       const initPanels = storyData.panels.map(p => ({
         ...p,
+        character_pinyin: buildCharacterPinyin(p.chinese_text, p.pinyin),
         imageStatus: "loading",
         imageUrl: null,
       }));
