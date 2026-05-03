@@ -84,10 +84,10 @@ function ClickableText({ text, characterPinyin, showPinyin, vocabulary, onWordCl
             : <span key={i}>{ch}</span>;
         }
         const py = showPinyin ? pinyinMap[ch] : null;
-        if (py) {
+        if (showPinyin) {
           return (
             <ruby key={i} className="char-ruby" onClick={() => onWordClick?.(ch, vocabulary)}>
-              {ch}<rt className="char-rt">{py}</rt>
+              {ch}<rt className="char-rt">{py ?? ""}</rt>
             </ruby>
           );
         }
