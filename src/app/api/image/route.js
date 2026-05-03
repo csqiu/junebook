@@ -2,7 +2,7 @@ export async function POST(request) {
   const { prompt } = await request.json();
 
   const fullPrompt = prompt +
-    ", children's picture book illustration, soft watercolor style, pastel colors, warm and gentle, simple clean background, age 2-6";
+    ", traditional Chinese children's picture book illustration, soft diffused brushwork watercolor with no hard outlines, warm palette of vermillion red and golden yellow and amber and warm ivory, cute round-faced chibi character design with expressive eyes, minimal simple background with flat color washes, Chinese folk art inspired, tender and cozy mood";
 
   const res = await fetch("https://fal.run/fal-ai/flux/dev", {
     method: "POST",
@@ -12,7 +12,7 @@ export async function POST(request) {
     },
     body: JSON.stringify({
       prompt: fullPrompt,
-      negative_prompt: "duplicate characters, multiple copies of same character, clones, extra people, character duplication, inconsistent art style, photorealistic, 3D render, dark, scary, adult content, text, watermark",
+      negative_prompt: "hard outlines, sharp edges, dark backgrounds, cool colors, blue tones, photorealistic, 3D render, western cartoon, anime, manga, complex cluttered background, duplicate characters, multiple copies of same character, clones, extra limbs, text, watermark",
       image_size: "landscape_4_3",
       num_inference_steps: 28,
       guidance_scale: 3.5,
