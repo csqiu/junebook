@@ -157,13 +157,16 @@ body {
 
 .panel-full-img-wrap {
   flex-shrink: 0;
-  height: 54%;
+  height: 60%;
   min-height: 180px;
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, #fdebd0, #fadbd8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.panel-full-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.panel-full-img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .panel-full-placeholder {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;

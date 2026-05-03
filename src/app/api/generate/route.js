@@ -24,10 +24,11 @@ Return ONLY valid JSON (no markdown, no backticks) in this exact structure:
   "title": "Story title in Chinese",
   "title_pinyin": "pinyin of title",
   "title_english": "English title",
+  "character_sheet": "One sentence describing the main character's permanent visual appearance for illustration consistency — species, size, colors, clothing, and one distinctive feature. Example: 'Mei is a small white rabbit with pink inner ears, wearing a red qipao with gold trim and a yellow flower clip on her right ear.'",
   "panels": [
     {
       "panel_number": 1,
-      "illustration_prompt": "A vivid scene for a children's watercolor illustration: describe characters, setting, mood, colors. Keep it under 50 words.",
+      "illustration_prompt": "A vivid scene for a children's watercolor illustration: describe the setting, action, mood, and colors. Do NOT redescribe the main character here — their appearance is provided separately. Keep it under 40 words.",
       "chinese_text": "Chinese sentence(s) for this panel",
       "pinyin": "full pinyin with tone marks",
       "english_translation": "English translation",
@@ -74,14 +75,24 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     .replace(/“|”/g, '"')
     .trim();
 
+  function injectCharacterSheet(story) {
+    if (story.character_sheet && story.panels) {
+      story.panels = story.panels.map(p => ({
+        ...p,
+        illustration_prompt: `Character reference (use consistently): ${story.character_sheet} Scene: ${p.illustration_prompt}`,
+      }));
+    }
+    return story;
+  }
+
   try {
     const story = JSON.parse(clean);
-    return Response.json(story);
+    return Response.json(injectCharacterSheet(story));
   } catch {
     const match = clean.match(/\{[\s\S]*\}/);
     if (match) {
       try {
-        return Response.json(JSON.parse(match[0]));
+        return Response.json(injectCharacterSheet(JSON.parse(match[0])));
       } catch {}
     }
     return Response.json({ error: "Failed to parse story JSON. Please try again." }, { status: 500 });
