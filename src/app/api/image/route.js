@@ -2,9 +2,9 @@ export async function POST(request) {
   const { prompt } = await request.json();
 
   const fullPrompt = prompt +
-    ", children's picture book illustration, soft watercolor style, pastel colors, warm and gentle, cute friendly characters, simple clean background, Studio Ghibli inspired, age 2-6";
+    ", children's picture book illustration, soft watercolor style, pastel colors, warm and gentle, simple clean background, age 2-6";
 
-  const res = await fetch("https://fal.run/fal-ai/flux/schnell", {
+  const res = await fetch("https://fal.run/fal-ai/flux/dev", {
     method: "POST",
     headers: {
       "Authorization": `Key ${process.env.FAL_KEY}`,
@@ -12,8 +12,10 @@ export async function POST(request) {
     },
     body: JSON.stringify({
       prompt: fullPrompt,
+      negative_prompt: "duplicate characters, multiple copies of same character, clones, extra people, character duplication, inconsistent art style, photorealistic, 3D render, dark, scary, adult content, text, watermark",
       image_size: "landscape_4_3",
-      num_inference_steps: 4,
+      num_inference_steps: 28,
+      guidance_scale: 3.5,
       num_images: 1,
       enable_safety_checker: true,
     }),
