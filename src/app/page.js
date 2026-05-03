@@ -313,36 +313,25 @@ export default function Home() {
       setLoadingMsg("Painting illustrations…");
       const total = storyData.panels.length;
 
-      async function generateImage(panel, idx, referenceUrl) {
+      await Promise.all(storyData.panels.map(async (panel, idx) => {
         try {
           const imgRes = await fetch("/api/image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: panel.illustration_prompt, referenceUrl }),
+            body: JSON.stringify({ prompt: panel.illustration_prompt }),
           });
           const imgData = await imgRes.json();
           if (imgData.error) throw new Error(imgData.error);
           setPanels(prev => prev.map((p, i) =>
             i === idx ? { ...p, imageStatus: "done", imageUrl: imgData.url } : p
           ));
-          return imgData.url;
         } catch (imgErr) {
           setPanels(prev => prev.map((p, i) =>
             i === idx ? { ...p, imageStatus: "error", imageError: imgErr.message } : p
           ));
-          return null;
-        } finally {
-          setProgress(60 + Math.round((idx + 1) / total * 38));
         }
-      }
-
-      // Panel 1 generates first to establish the visual anchor
-      const referenceUrl = await generateImage(storyData.panels[0], 0, null);
-
-      // Remaining panels use panel 1 as a style/character reference
-      await Promise.all(storyData.panels.slice(1).map((panel, i) =>
-        generateImage(panel, i + 1, referenceUrl)
-      ));
+        setProgress(60 + Math.round((idx + 1) / total * 38));
+      }));
 
       setProgress(100);
     } catch (err) {
