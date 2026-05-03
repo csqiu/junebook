@@ -49,7 +49,8 @@ function PasswordGate({ onUnlock }) {
 function buildCharacterPinyin(chineseText, flatPinyin) {
   if (!flatPinyin || !chineseText) return [];
   const syllables = flatPinyin.trim().split(/\s+/);
-  const chars = Array.from(chineseText).filter(ch => !/[\s，。！？、：；""''【】（）a-zA-Z0-9]/u.test(ch));
+  // Only match actual CJK ideographs — more reliable than an exclusion list
+  const chars = Array.from(chineseText).filter(ch => /[一-鿿㐀-䶿]/u.test(ch));
   return chars.map((char, i) => ({ char, pinyin: syllables[i] || "" }));
 }
 
@@ -322,24 +323,37 @@ export default function Home() {
       setLoadingMsg("Painting illustrations…");
       const total = storyData.panels.length;
 
-      await Promise.all(storyData.panels.map(async (panel, idx) => {
+      async function fetchImage(prompt, anchorUrl) {
+        const imgRes = await fetch("/api/image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, anchorUrl }),
+        });
+        const imgData = await imgRes.json();
+        if (imgData.error) throw new Error(imgData.error);
+        return imgData.url;
+      }
+
+      // Panel 1 via fal.ai — produces a public URL used as Neolemon's character reference
+      let anchorUrl = null;
+      try {
+        anchorUrl = await fetchImage(storyData.panels[0].illustration_prompt, null);
+        setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "done", imageUrl: anchorUrl } : p));
+      } catch (err) {
+        setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "error", imageError: err.message } : p));
+      }
+      setProgress(70);
+
+      // Panels 2+ via Neolemon, using panel 1 as character reference
+      await Promise.all(storyData.panels.slice(1).map(async (panel, i) => {
+        const idx = i + 1;
         try {
-          const imgRes = await fetch("/api/image", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: panel.illustration_prompt }),
-          });
-          const imgData = await imgRes.json();
-          if (imgData.error) throw new Error(imgData.error);
-          setPanels(prev => prev.map((p, i) =>
-            i === idx ? { ...p, imageStatus: "done", imageUrl: imgData.url } : p
-          ));
+          const url = await fetchImage(panel.illustration_prompt, anchorUrl);
+          setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "done", imageUrl: url } : p));
         } catch (imgErr) {
-          setPanels(prev => prev.map((p, i) =>
-            i === idx ? { ...p, imageStatus: "error", imageError: imgErr.message } : p
-          ));
+          setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "error", imageError: imgErr.message } : p));
         }
-        setProgress(60 + Math.round((idx + 1) / total * 38));
+        setProgress(70 + Math.round((i + 1) / (total - 1) * 28));
       }));
 
       setProgress(100);
