@@ -78,7 +78,11 @@ function ClickableText({ text, characterPinyin, showPinyin, vocabulary, onWordCl
     <span>
       {chars.map((ch, i) => {
         const isPunct = /[\s，。！？、：；""''【】（）]/u.test(ch);
-        if (isPunct) return <span key={i}>{ch}</span>;
+        if (isPunct) {
+          return showPinyin
+            ? <ruby key={i} style={{ pointerEvents: "none" }}>{ch}<rt></rt></ruby>
+            : <span key={i}>{ch}</span>;
+        }
         const py = showPinyin ? pinyinMap[ch] : null;
         if (py) {
           return (
