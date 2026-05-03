@@ -68,15 +68,27 @@ function WordPopover({ entry, onClose }) {
 }
 
 // ─── Clickable Chinese Text ───────────────────────────────────────────────────
-function ClickableText({ text, vocabulary, onWordClick }) {
+function ClickableText({ text, characterPinyin, showPinyin, vocabulary, onWordClick }) {
+  const pinyinMap = {};
+  if (characterPinyin) {
+    characterPinyin.forEach(({ char, pinyin }) => { if (pinyin) pinyinMap[char] = pinyin; });
+  }
   const chars = Array.from(text);
   return (
     <span>
       {chars.map((ch, i) => {
         const isPunct = /[\s，。！？、：；""''【】（）]/u.test(ch);
         if (isPunct) return <span key={i}>{ch}</span>;
+        const py = showPinyin ? pinyinMap[ch] : null;
+        if (py) {
+          return (
+            <ruby key={i} className="char-ruby" onClick={() => onWordClick?.(ch, vocabulary)}>
+              {ch}<rt className="char-rt">{py}</rt>
+            </ruby>
+          );
+        }
         return (
-          <span key={i} className="char-clickable" onClick={() => onWordClick(ch, vocabulary)} title="Click to learn">
+          <span key={i} className="char-clickable" onClick={() => onWordClick?.(ch, vocabulary)}>
             {ch}
           </span>
         );
@@ -110,9 +122,14 @@ function PanelViewer({ panel, showPinyin, showEnglish, onWordClick, animDir }) {
         )}
       </div>
       <div className="panel-full-body">
-        {showPinyin && <div className="panel-full-pinyin">{panel.pinyin}</div>}
         <div className="panel-full-chinese">
-          <ClickableText text={panel.chinese_text} vocabulary={panel.vocabulary || []} onWordClick={onWordClick} />
+          <ClickableText
+            text={panel.chinese_text}
+            characterPinyin={panel.character_pinyin}
+            showPinyin={showPinyin}
+            vocabulary={panel.vocabulary || []}
+            onWordClick={onWordClick}
+          />
         </div>
         {showEnglish && <div className="panel-full-english">{panel.english_translation}</div>}
         <div className="panel-full-hint">Tap any character to look it up ✨</div>
@@ -490,8 +507,14 @@ export default function Home() {
                   }
                   <div className="pdf-panel-body">
                     <div className="pdf-panel-page">Page {panel.panel_number} of {panels.length}</div>
-                    {showPinyin && <div className="pdf-panel-pinyin">{panel.pinyin}</div>}
-                    <div className="pdf-panel-chinese">{panel.chinese_text}</div>
+                    <div className="pdf-panel-chinese">
+                      <ClickableText
+                        text={panel.chinese_text}
+                        characterPinyin={panel.character_pinyin}
+                        showPinyin={showPinyin}
+                        vocabulary={[]}
+                      />
+                    </div>
                     {showEnglish && <div className="pdf-panel-english">{panel.english_translation}</div>}
                     <div className="pdf-panel-branding">Junebook · {story.title_english}</div>
                   </div>

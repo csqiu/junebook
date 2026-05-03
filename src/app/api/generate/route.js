@@ -30,7 +30,8 @@ Return ONLY valid JSON (no markdown, no backticks) in this exact structure:
       "panel_number": 1,
       "illustration_prompt": "A vivid scene for a children's watercolor illustration: describe the setting, action, mood, and colors. Do NOT redescribe the main character here — their appearance is provided separately. Keep it under 40 words.",
       "chinese_text": "Chinese sentence(s) for this panel",
-      "pinyin": "full pinyin with tone marks",
+      "pinyin": "full sentence pinyin with tone marks (flat string, for reference)",
+      "character_pinyin": [{"char": "我", "pinyin": "wǒ"}, {"char": "爱", "pinyin": "ài"}],
       "english_translation": "English translation",
       "vocabulary": [
         {
