@@ -51,6 +51,7 @@ body {
 .panel-count-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #c0392b; cursor: pointer; box-shadow: 0 2px 8px rgba(192,57,43,0.35); }
 .panel-count-slider::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #c0392b; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(192,57,43,0.35); }
 .panel-count-val { font-size: 1.3rem; font-weight: 800; color: #c0392b; min-width: 36px; text-align: center; }
+.panel-count-note { font-size: 0.75rem; color: #b09080; margin-top: 6px; font-weight: 600; }
 
 /* ── LOADING ─────────────────────────────────────────────────────────────── */
 .loading-screen { text-align: center; padding: 64px 24px; }

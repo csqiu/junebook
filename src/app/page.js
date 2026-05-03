@@ -370,6 +370,7 @@ export default function Home() {
               />
               <span className="panel-count-val">{panelCount}</span>
             </div>
+            <div className="panel-count-note">Each page takes ~20–30s to illustrate ({Math.round(panelCount * 25 / 60) < 1 ? "~" + panelCount * 25 + "s" : "~" + Math.round(panelCount * 25 / 60) + " min"} total)</div>
           </div>
 
           <div className="setup-section">
