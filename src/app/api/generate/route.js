@@ -10,42 +10,63 @@ export async function POST(request) {
     ? `- Additional story elements: ${additionalElements.trim()}`
     : "";
 
-  const prompt = `You are a children's book author creating a Chinese picture book.
-
-Generate a ${count}-panel picture book story with these parameters:
+  const prompt = `Create a ${count}-panel Chinese picture book story with these parameters:
 - HSK level: ${hsk}
 - Themes: ${themes.join(", ")}
 - Main character: ${mainChar || "a little rabbit"}
 - Tone: ${tone}
 ${extraLine}
 
-Return ONLY valid JSON (no markdown, no backticks) in this exact structure:
-{
-  "title": "Story title in Chinese",
-  "title_pinyin": "pinyin of title",
-  "title_english": "English title",
-  "character_sheet": "One sentence describing the main character's permanent visual appearance for illustration consistency — species, size, colors, clothing, and one distinctive feature.",
-  "panels": [
-    {
-      "panel_number": 1,
-      "illustration_prompt": "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT redescribe the main character — their appearance is provided separately. Under 40 words.",
-      "chinese_text": "Chinese sentence(s) for this panel",
-      "pinyin": "full sentence pinyin with tone marks",
-      "english_translation": "English translation",
-      "vocabulary": [
-        {
-          "character": "word",
-          "pinyin": "pinyin",
-          "definition": "English definition",
-          "example_chinese": "Example sentence in Chinese",
-          "example_english": "Example sentence in English"
-        }
-      ]
-    }
-  ]
-}
-
 Include 2-4 vocabulary words per panel. Make the story charming, culturally authentic, and child-appropriate.`;
+
+  const storyTool = {
+    name: "create_story",
+    description: "Output a complete Chinese picture book story",
+    input_schema: {
+      type: "object",
+      required: ["title", "title_pinyin", "title_english", "character_sheet", "panels"],
+      properties: {
+        title: { type: "string", description: "Story title in Chinese" },
+        title_pinyin: { type: "string", description: "Pinyin of the title with tone marks" },
+        title_english: { type: "string", description: "English title" },
+        character_sheet: {
+          type: "string",
+          description: "One sentence describing the main character's permanent visual appearance for illustration consistency — species, size, colors, clothing, and one distinctive feature."
+        },
+        panels: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["panel_number", "illustration_prompt", "chinese_text", "pinyin", "english_translation", "vocabulary"],
+            properties: {
+              panel_number: { type: "integer" },
+              illustration_prompt: {
+                type: "string",
+                description: "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT redescribe the main character. Under 40 words."
+              },
+              chinese_text: { type: "string", description: "Chinese sentence(s) for this panel" },
+              pinyin: { type: "string", description: "Full sentence pinyin with tone marks, one syllable per word separated by spaces" },
+              english_translation: { type: "string" },
+              vocabulary: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["character", "pinyin", "definition", "example_chinese", "example_english"],
+                  properties: {
+                    character: { type: "string" },
+                    pinyin: { type: "string" },
+                    definition: { type: "string" },
+                    example_chinese: { type: "string" },
+                    example_english: { type: "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  };
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -55,9 +76,11 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 16000,
-      system: "You are a Chinese children's book author. Return only valid JSON with no markdown, no code blocks, no extra text. Never use smart quotes inside JSON values.",
+      system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
+      tools: [storyTool],
+      tool_choice: { type: "tool", name: "create_story" },
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -73,34 +96,20 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     return Response.json({ error: "Story was too long to generate. Try fewer pages." }, { status: 500 });
   }
 
-  const raw = data.content.map((b) => b.text || "").join("");
-  const clean = raw
-    .replace(/```json|```/g, "")
-    .replace(/‘|’/g, "'")
-    .replace(/“|”/g, '"')
-    .replace(/,\s*([}\]])/g, "$1") // remove trailing commas
-    .trim();
-
-  function injectCharacterSheet(story) {
-    if (story.character_sheet && story.panels) {
-      story.panels = story.panels.map(p => ({
-        ...p,
-        illustration_prompt: `Character reference (use consistently): ${story.character_sheet} Scene: ${p.illustration_prompt}`,
-      }));
-    }
-    return story;
+  const toolBlock = data.content?.find(b => b.type === "tool_use");
+  if (!toolBlock?.input) {
+    console.error("No tool_use block in response:", JSON.stringify(data).slice(0, 500));
+    return Response.json({ error: "Failed to generate story. Please try again." }, { status: 500 });
   }
 
-  try {
-    return Response.json(injectCharacterSheet(JSON.parse(clean)));
-  } catch {
-    const match = clean.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        return Response.json(injectCharacterSheet(JSON.parse(match[0])));
-      } catch {}
-    }
-    console.error("JSON parse failed. Raw response:", raw.slice(0, 500));
-    return Response.json({ error: "Failed to parse story. Please try again." }, { status: 500 });
+  const story = toolBlock.input;
+
+  if (story.character_sheet && story.panels) {
+    story.panels = story.panels.map(p => ({
+      ...p,
+      illustration_prompt: `Character reference (use consistently): ${story.character_sheet} Scene: ${p.illustration_prompt}`,
+    }));
   }
+
+  return Response.json(story);
 }
