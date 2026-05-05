@@ -232,14 +232,19 @@ export default function Home() {
 
       const items = container.querySelectorAll(".pdf-panel-item");
 
-      // Capture all panels first at natural height
+      // Capture all panels at their full content height.
+      // html2canvas clips to viewport height by default, so we pass each
+      // element's scrollHeight explicitly to avoid cutting off long text.
       const canvases = [];
       for (let i = 0; i < items.length; i++) {
+        const fullHeight = items[i].scrollHeight;
         const canvas = await html2canvas(items[i], {
           scale: 2,
           useCORS: true,
           backgroundColor: "#fdf6ee",
           logging: false,
+          height: fullHeight,
+          windowHeight: fullHeight,
         });
         canvases.push(canvas);
       }
