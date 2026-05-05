@@ -21,63 +21,45 @@ export async function POST(request) {
       ? `- Additional story elements: ${additionalElements.trim()}`
       : "";
 
-    const prompt = `Create a ${count}-panel Chinese picture book story with these parameters:
+    const prompt = `You are a children's book author creating a Chinese picture book.
+
+Generate a ${count}-panel picture book story with these parameters:
 - HSK level: ${hsk}
 - Themes: ${themes.join(", ")}
 - Main character: ${mainChar || "a little rabbit"}
 - Tone: ${tone}
 ${extraLine}
 
-Include 2-4 vocabulary words per panel. Make the story charming, culturally authentic, and child-appropriate.`;
-
-    // ── 2. Tool schema ─────────────────────────────────────────────────────
-    const storyTool = {
-      name: "create_story",
-      description: "Output a complete Chinese picture book story",
-      input_schema: {
-        type: "object",
-        required: ["title", "title_pinyin", "title_english", "character_sheet", "panels"],
-        properties: {
-          title:         { type: "string", description: "Story title in Chinese" },
-          title_pinyin:  { type: "string", description: "Pinyin of the title with tone marks" },
-          title_english: { type: "string", description: "English title" },
-          character_sheet: {
-            type: "string",
-            description: "One sentence describing the main character's permanent visual appearance — species, size, colors, clothing, and one distinctive feature."
-          },
-          panels: {
-            type: "array",
-            items: {
-              type: "object",
-              required: ["panel_number", "illustration_prompt", "chinese_text", "pinyin", "english_translation", "vocabulary"],
-              properties: {
-                panel_number:        { type: "integer" },
-                illustration_prompt: { type: "string", description: "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT describe the character's appearance. Under 40 words." },
-                chinese_text:        { type: "string" },
-                pinyin:              { type: "string", description: "Full sentence pinyin with tone marks, syllables separated by spaces" },
-                english_translation: { type: "string" },
-                vocabulary: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    required: ["character", "pinyin", "definition", "example_chinese", "example_english"],
-                    properties: {
-                      character:       { type: "string" },
-                      pinyin:          { type: "string" },
-                      definition:      { type: "string" },
-                      example_chinese: { type: "string" },
-                      example_english: { type: "string" }
-                    }
-                  }
-                }
-              }
-            }
-          }
+Return ONLY valid JSON (no markdown, no backticks) in this exact structure:
+{
+  "title": "Story title in Chinese",
+  "title_pinyin": "pinyin of title with tone marks",
+  "title_english": "English title",
+  "character_sheet": "One sentence describing the main character's permanent visual appearance for illustration consistency — species, size, colors, clothing, and one distinctive feature.",
+  "panels": [
+    {
+      "panel_number": 1,
+      "illustration_prompt": "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT describe the main character appearance. Under 40 words.",
+      "chinese_text": "Chinese sentence(s) for this panel",
+      "pinyin": "full sentence pinyin with tone marks, syllables space-separated",
+      "english_translation": "English translation",
+      "vocabulary": [
+        {
+          "character": "word",
+          "pinyin": "pinyin",
+          "definition": "English definition",
+          "example_chinese": "Example sentence in Chinese",
+          "example_english": "Example sentence in English"
         }
-      }
-    };
+      ]
+    }
+  ]
+}
 
-    // ── 3. Call Anthropic API (with up to 3 attempts) ─────────────────────
+Include 2-4 vocabulary words per panel. Make the story charming, culturally authentic, and child-appropriate.
+You MUST include all ${count} panels. Return nothing except the JSON object.`;
+
+    // ── 2. Call API and parse JSON (up to 3 attempts) ─────────────────────
     async function callAPI() {
       let apiRes;
       try {
@@ -91,9 +73,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
             max_tokens: 16000,
-            system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
-            tools: [storyTool],
-            tool_choice: { type: "tool", name: "create_story" },
+            system: "You are a Chinese children's book author. Return only valid JSON with no markdown, no code blocks, no extra text.",
             messages: [{ role: "user", content: prompt }],
           }),
         });
@@ -113,29 +93,36 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       try {
         data = await apiRes.json();
       } catch {
-        return { error: "Unexpected response from AI. Please try again." };
+        return { retry: true };
       }
 
       if (data.stop_reason === "max_tokens") {
         return { error: "Story was too long to generate. Try fewer pages." };
       }
 
-      const toolBlock = Array.isArray(data.content)
-        ? data.content.find(b => b.type === "tool_use" && b.name === "create_story")
-        : null;
+      const raw = (data.content || []).map(b => b.text || "").join("");
+      const clean = raw
+        .replace(/```json|```/g, "")
+        .replace(/‘|’/g, "'")
+        .replace(/“|”/g, '"')
+        .trim();
 
-      if (!toolBlock) {
-        console.error("No tool_use block. stop_reason:", data.stop_reason);
-        return { retry: true };
+      // Try full parse first, then extract the outermost JSON object
+      const candidates = [clean];
+      const match = clean.match(/\{[\s\S]*\}/);
+      if (match && match[0] !== clean) candidates.push(match[0]);
+
+      for (const candidate of candidates) {
+        try {
+          const story = JSON.parse(candidate);
+          if (story && Array.isArray(story.panels) && story.panels.length > 0) {
+            return { story };
+          }
+        } catch { /* try next candidate */ }
       }
 
-      const story = toolBlock.input;
-      if (!story || typeof story !== "object" || !Array.isArray(story.panels) || story.panels.length === 0) {
-        console.error("story.panels missing or empty:", JSON.stringify(story).slice(0, 200));
-        return { retry: true };
-      }
-
-      return { story };
+      console.error("Could not parse panels from response, raw snippet:", raw.slice(0, 200));
+      return { retry: true };
     }
 
     let story;
@@ -143,13 +130,13 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       const result = await callAPI();
       if (result.story) { story = result.story; break; }
       if (result.error) return Response.json({ error: result.error }, { status: 500 });
-      console.warn(`Attempt ${attempt} returned empty panels, retrying…`);
+      console.warn(`Attempt ${attempt} failed to get panels, retrying…`);
     }
     if (!story) {
-      return Response.json({ error: "Could not generate story panels after 3 attempts. Please try again." }, { status: 500 });
+      return Response.json({ error: "Could not generate a valid story. Please try again." }, { status: 500 });
     }
 
-    // ── 8. Inject character sheet into illustration prompts ───────────────
+    // ── 3. Inject character sheet into illustration prompts ───────────────
     if (story.character_sheet) {
       story.panels = story.panels.map(p => ({
         ...p,
@@ -160,7 +147,6 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     return Response.json(story);
 
   } catch (err) {
-    // Catch-all: should never reach here, but guarantees a JSON response
     console.error("Unhandled error in /api/generate:", err?.message, err?.stack);
     return Response.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 });
   }
