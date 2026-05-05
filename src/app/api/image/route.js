@@ -9,7 +9,11 @@ async function generateNeolemonImage(prompt, ipImage) {
     height: 768,
     seed: Math.floor(Math.random() * 2147483647),
   };
-  if (ipImage) body.ip_image = ipImage;
+
+  if (ipImage) {
+    // Segmind expects raw base64, not a data URI
+    body.ip_image = ipImage.replace(/^data:image\/\w+;base64,/, "");
+  }
 
   const res = await fetch("https://api.segmind.com/v1/consistent-character-AI-neolemon-v3", {
     method: "POST",
@@ -19,13 +23,16 @@ async function generateNeolemonImage(prompt, ipImage) {
     },
     body: JSON.stringify(body),
   });
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || err.error || `Segmind error: ${res.status}`);
+    const detail = JSON.stringify(err);
+    throw new Error(`Segmind ${res.status}: ${detail}`);
   }
+
   const data = await res.json();
   const base64 = data.image;
-  if (!base64) throw new Error("No image returned from Segmind");
+  if (!base64) throw new Error(`Segmind returned no image. Response: ${JSON.stringify(data)}`);
   return `data:image/png;base64,${base64}`;
 }
 
