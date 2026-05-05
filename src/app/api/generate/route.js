@@ -77,73 +77,76 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       }
     };
 
-    // ── 3. Call Anthropic API ──────────────────────────────────────────────
-    let apiRes;
-    try {
-      apiRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 16000,
-          system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
-          tools: [storyTool],
-          tool_choice: { type: "tool", name: "create_story" },
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-    } catch (fetchErr) {
-      console.error("Network error calling Anthropic API:", fetchErr.message);
-      return Response.json({ error: "Network error reaching AI service. Please try again." }, { status: 500 });
+    // ── 3. Call Anthropic API (with up to 3 attempts) ─────────────────────
+    async function callAPI() {
+      let apiRes;
+      try {
+        apiRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": process.env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 16000,
+            system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
+            tools: [storyTool],
+            tool_choice: { type: "tool", name: "create_story" },
+            messages: [{ role: "user", content: prompt }],
+          }),
+        });
+      } catch (fetchErr) {
+        return { error: "Network error reaching AI service. Please try again." };
+      }
+
+      if (!apiRes.ok) {
+        let errBody = {};
+        try { errBody = await apiRes.json(); } catch { /* ignore */ }
+        const msg = errBody.error?.message || `Anthropic API returned ${apiRes.status}`;
+        console.error("Anthropic non-OK response:", apiRes.status, msg);
+        return { error: msg };
+      }
+
+      let data;
+      try {
+        data = await apiRes.json();
+      } catch {
+        return { error: "Unexpected response from AI. Please try again." };
+      }
+
+      if (data.stop_reason === "max_tokens") {
+        return { error: "Story was too long to generate. Try fewer pages." };
+      }
+
+      const toolBlock = Array.isArray(data.content)
+        ? data.content.find(b => b.type === "tool_use" && b.name === "create_story")
+        : null;
+
+      if (!toolBlock) {
+        console.error("No tool_use block. stop_reason:", data.stop_reason);
+        return { retry: true };
+      }
+
+      const story = toolBlock.input;
+      if (!story || typeof story !== "object" || !Array.isArray(story.panels) || story.panels.length === 0) {
+        console.error("story.panels missing or empty:", JSON.stringify(story).slice(0, 200));
+        return { retry: true };
+      }
+
+      return { story };
     }
 
-    // ── 4. Handle non-OK HTTP from Anthropic ──────────────────────────────
-    if (!apiRes.ok) {
-      let errBody = {};
-      try { errBody = await apiRes.json(); } catch { /* ignore */ }
-      const msg = errBody.error?.message || `Anthropic API returned ${apiRes.status}`;
-      console.error("Anthropic non-OK response:", apiRes.status, msg);
-      return Response.json({ error: msg }, { status: 500 });
+    let story;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const result = await callAPI();
+      if (result.story) { story = result.story; break; }
+      if (result.error) return Response.json({ error: result.error }, { status: 500 });
+      console.warn(`Attempt ${attempt} returned empty panels, retrying…`);
     }
-
-    // ── 5. Parse Anthropic response body ──────────────────────────────────
-    let data;
-    try {
-      data = await apiRes.json();
-    } catch (parseErr) {
-      console.error("Failed to parse Anthropic response body:", parseErr.message);
-      return Response.json({ error: "Unexpected response from AI. Please try again." }, { status: 500 });
-    }
-
-    if (data.stop_reason === "max_tokens") {
-      return Response.json({ error: "Story was too long to generate. Try fewer pages." }, { status: 500 });
-    }
-
-    // ── 6. Extract tool_use block ──────────────────────────────────────────
-    const toolBlock = Array.isArray(data.content)
-      ? data.content.find(b => b.type === "tool_use" && b.name === "create_story")
-      : null;
-
-    if (!toolBlock) {
-      console.error("No tool_use block. stop_reason:", data.stop_reason,
-        "content types:", data.content?.map(b => b.type));
-      return Response.json({ error: "AI did not return a story structure. Please try again." }, { status: 500 });
-    }
-
-    const story = toolBlock.input;
-
-    // ── 7. Validate the story object ──────────────────────────────────────
-    if (!story || typeof story !== "object") {
-      console.error("tool_use input is not an object:", typeof story);
-      return Response.json({ error: "Story data was malformed. Please try again." }, { status: 500 });
-    }
-    if (!Array.isArray(story.panels) || story.panels.length === 0) {
-      console.error("story.panels missing or empty:", JSON.stringify(story).slice(0, 300));
-      return Response.json({ error: "Story panels were missing. Please try again." }, { status: 500 });
+    if (!story) {
+      return Response.json({ error: "Could not generate story panels after 3 attempts. Please try again." }, { status: 500 });
     }
 
     // ── 8. Inject character sheet into illustration prompts ───────────────
