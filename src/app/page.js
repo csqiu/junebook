@@ -328,37 +328,24 @@ export default function Home() {
       setLoadingMsg("Painting illustrations…");
       const total = storyData.panels.length;
 
-      async function fetchImage(prompt, anchorUrl) {
-        const imgRes = await fetch("/api/image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, anchorUrl }),
-        });
-        const imgData = await imgRes.json();
-        if (imgData.error) throw new Error(imgData.error);
-        return imgData.url;
-      }
-
-      // Panel 1 via fal.ai — produces a public URL used as Neolemon's character reference
-      let anchorUrl = null;
-      try {
-        anchorUrl = await fetchImage(storyData.panels[0].illustration_prompt, null);
-        setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "done", imageUrl: anchorUrl } : p));
-      } catch (err) {
-        setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "error", imageError: err.message } : p));
-      }
-      setProgress(70);
-
-      // Panels 2+ via Neolemon, using panel 1 as character reference
-      await Promise.all(storyData.panels.slice(1).map(async (panel, i) => {
-        const idx = i + 1;
+      await Promise.all(storyData.panels.map(async (panel, idx) => {
         try {
-          const url = await fetchImage(panel.illustration_prompt, anchorUrl);
-          setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "done", imageUrl: url } : p));
+          const imgRes = await fetch("/api/image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: panel.illustration_prompt }),
+          });
+          const imgData = await imgRes.json();
+          if (imgData.error) throw new Error(imgData.error);
+          setPanels(prev => prev.map((p, i) =>
+            i === idx ? { ...p, imageStatus: "done", imageUrl: imgData.url } : p
+          ));
         } catch (imgErr) {
-          setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "error", imageError: imgErr.message } : p));
+          setPanels(prev => prev.map((p, i) =>
+            i === idx ? { ...p, imageStatus: "error", imageError: imgErr.message } : p
+          ));
         }
-        setProgress(70 + Math.round((i + 1) / (total - 1) * 28));
+        setProgress(60 + Math.round((idx + 1) / total * 38));
       }));
 
       setProgress(100);
