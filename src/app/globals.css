@@ -6,9 +6,14 @@ body {
   background: #fdf6ee;
   font-family: 'Nunito', sans-serif;
   color: #3d2c1e;
+  -webkit-text-size-adjust: 100%;
 }
 
-.app { min-height: 100vh; background: #fdf6ee; }
+.app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #fdf6ee;
+}
 
 /* ── HEADER (setup/loading) ──────────────────────────────────────────────── */
 .header { text-align: center; padding: 32px 16px 8px; }
@@ -16,7 +21,16 @@ body {
 .header-sub { font-size: 1rem; color: #8b6c56; margin-top: 4px; font-weight: 600; }
 
 /* ── GATE ────────────────────────────────────────────────────────────────── */
-.gate-overlay { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fdf6ee; padding: 24px; }
+.gate-overlay {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #fdf6ee;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+}
 .gate-card { background: #fff9f2; border-radius: 24px; padding: 40px 36px; max-width: 360px; width: 100%; border: 2px solid #f0d9c4; box-shadow: 0 8px 32px rgba(180,100,60,0.1); text-align: center; }
 .gate-icon { font-size: 3rem; margin-bottom: 12px; }
 .gate-title { font-family: 'Ma Shan Zheng', cursive; font-size: 2rem; color: #c0392b; margin-bottom: 4px; }
@@ -70,6 +84,10 @@ body {
   display: flex;
   flex-direction: column;
   z-index: 100;
+  /* Honour notch / home-bar on iOS */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* Viewer header */
@@ -209,7 +227,7 @@ ruby { display: inline-flex; flex-direction: column-reverse; align-items: center
   flex-shrink: 0;
   border-top: 1.5px solid #f0d9c4;
   background: #fff9f2;
-  padding: 10px 16px 12px;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -285,3 +303,52 @@ ruby { display: inline-flex; flex-direction: column-reverse; align-items: center
 .pdf-panel-chinese { font-family: 'Ma Shan Zheng', cursive; font-size: 40px; color: #3d2c1e; line-height: 2.8; letter-spacing: 0.12em; }
 .pdf-panel-english { font-size: 14px; color: #9b7d6a; font-style: italic; }
 .pdf-panel-branding { margin-top: auto; font-size: 10px; color: #d4b896; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
+
+/* ── RESPONSIVE: MOBILE (≤ 480px) ───────────────────────────────────────── */
+@media (max-width: 480px) {
+  .header-title { font-size: 2rem; letter-spacing: 2px; }
+  .header-sub { font-size: 0.85rem; }
+
+  .gate-card { padding: 32px 20px; border-radius: 20px; }
+
+  .setup-card { margin: 12px; padding: 20px 16px; border-radius: 18px; }
+  .setup-label { font-size: 0.78rem; }
+  .chip { padding: 7px 12px; font-size: 0.82rem; }
+  .generate-btn { font-size: 1rem; padding: 14px; }
+
+  .viewer-header { padding: 8px 12px; min-height: 54px; gap: 8px; }
+  .viewer-brand { display: none; }
+  .viewer-title-cn { font-size: 1.3rem; }
+  .viewer-title-sub { font-size: 0.65rem; }
+  .viewer-close-btn { width: 30px; height: 30px; font-size: 0.8rem; }
+
+  .panel-full-img-wrap { height: 52%; }
+  .panel-full-body { padding: 12px 16px 8px; gap: 6px; }
+  .panel-full-chinese { font-size: 1.6rem; line-height: 2.6; }
+  .panel-full-english { font-size: 0.82rem; }
+  .panel-full-hint { font-size: 0.65rem; }
+
+  .viewer-nav { padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); gap: 8px; }
+  .viewer-nav-row { gap: 14px; }
+  .nav-arrow { width: 40px; height: 40px; font-size: 1rem; }
+  .nav-page-info { font-size: 0.82rem; min-width: 60px; }
+  .ctrl-btn { padding: 6px 12px; font-size: 0.78rem; }
+
+  .popover-card { padding: 20px 18px; border-radius: 16px; }
+  .popover-char { font-size: 3rem; }
+}
+
+/* ── RESPONSIVE: TABLET / iPAD (481px – 1024px) ─────────────────────────── */
+@media (min-width: 481px) and (max-width: 1024px) {
+  .setup-card { max-width: 580px; padding: 28px 24px; }
+
+  .viewer-header { min-height: 60px; }
+  .viewer-title-cn { font-size: 1.6rem; }
+
+  .panel-full-img-wrap { height: 62%; }
+  .panel-full-chinese { font-size: 2.2rem; line-height: 2.8; }
+  .panel-full-english { font-size: 0.95rem; }
+
+  .nav-arrow { width: 48px; height: 48px; font-size: 1.2rem; }
+  .ctrl-btn { padding: 8px 18px; font-size: 0.88rem; }
+}
