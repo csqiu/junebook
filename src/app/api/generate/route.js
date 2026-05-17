@@ -1,9 +1,58 @@
 // Allow up to 5 min execution — long stories need time to generate
 export const maxDuration = 300;
 
+async function callAnthropic(prompt, storyTool) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 16000,
+      system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
+      tools: [storyTool],
+      tool_choice: { type: "tool", name: "create_story" },
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Anthropic API returned ${res.status}`);
+  }
+  return res.json();
+}
+
+function extractStory(data) {
+  if (data.stop_reason === "max_tokens") {
+    throw new Error("Story was too long to generate. Try fewer pages.");
+  }
+  const toolBlock = Array.isArray(data.content)
+    ? data.content.find(b => b.type === "tool_use" && b.name === "create_story")
+    : null;
+  if (!toolBlock) {
+    throw new Error(`AI did not return a story structure (stop_reason: ${data.stop_reason}).`);
+  }
+  const story = toolBlock.input;
+  if (!story || typeof story !== "object") {
+    throw new Error("Story data was malformed.");
+  }
+  if (!Array.isArray(story.panels) || story.panels.length === 0) {
+    const keys = Object.keys(story);
+    const panelsVal = story.panels === undefined ? "undefined"
+      : story.panels === null ? "null"
+      : Array.isArray(story.panels) ? `array(${story.panels.length})`
+      : `${typeof story.panels}`;
+    throw new Error(`Story panels were missing. Keys present: [${keys.join(", ")}]. Panels type: ${panelsVal}.`);
+  }
+  return story;
+}
+
 export async function POST(request) {
   try {
-    // ── 1. Parse incoming request ──────────────────────────────────────────
+    // ── 1. Parse request ───────────────────────────────────────────────────
     let body;
     try {
       body = await request.json();
@@ -43,7 +92,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
           title_english: { type: "string", description: "English title" },
           character_sheet: {
             type: "string",
-            description: "One sentence describing the main character's permanent visual appearance — species, size, colors, clothing, and one distinctive feature. Used verbatim in every illustration prompt."
+            description: "One sentence describing the main character's permanent visual appearance — species, size, colors, clothing, and one distinctive feature.",
           },
           panels: {
             type: "array",
@@ -54,7 +103,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
                 panel_number:        { type: "integer" },
                 illustration_prompt: {
                   type: "string",
-                  description: "Scene description for a children's watercolor illustration. Start by explicitly naming every character visible in this scene (e.g. 'The rabbit and the tortoise...'). Then describe setting, action, mood, time of day. Do NOT re-describe permanent appearance — that is handled separately. Under 45 words."
+                  description: "Vivid scene for a children's watercolor illustration. Name every character present, then describe setting, action, mood, colors. Under 45 words.",
                 },
                 chinese_text:        { type: "string" },
                 pinyin:              { type: "string", description: "Full sentence pinyin with tone marks, syllables separated by spaces" },
@@ -69,92 +118,38 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
                       pinyin:          { type: "string" },
                       definition:      { type: "string" },
                       example_chinese: { type: "string" },
-                      example_english: { type: "string" }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                      example_english: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     };
 
-    // ── 3. Call Anthropic API ──────────────────────────────────────────────
-    let apiRes;
-    try {
-      apiRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 16000,
-          system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
-          tools: [storyTool],
-          tool_choice: { type: "tool", name: "create_story" },
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-    } catch (fetchErr) {
-      console.error("Network error calling Anthropic API:", fetchErr.message);
-      return Response.json({ error: "Network error reaching AI service. Please try again." }, { status: 500 });
+    // ── 3. Call Anthropic — retry once on panels-missing failure ──────────
+    let story;
+    let lastErr;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const data = await callAnthropic(prompt, storyTool);
+        story = extractStory(data);
+        break;
+      } catch (err) {
+        lastErr = err;
+        console.error(`Attempt ${attempt} failed:`, err.message);
+        if (attempt === 1 && err.message.includes("panels were missing")) {
+          // Only retry for the missing-panels case
+          continue;
+        }
+        throw err;
+      }
     }
+    if (!story) throw lastErr;
 
-    // ── 4. Handle non-OK HTTP from Anthropic ──────────────────────────────
-    if (!apiRes.ok) {
-      let errBody = {};
-      try { errBody = await apiRes.json(); } catch { /* ignore */ }
-      const msg = errBody.error?.message || `Anthropic API returned ${apiRes.status}`;
-      console.error("Anthropic non-OK response:", apiRes.status, msg);
-      return Response.json({ error: msg }, { status: 500 });
-    }
-
-    // ── 5. Parse Anthropic response body ──────────────────────────────────
-    let data;
-    try {
-      data = await apiRes.json();
-    } catch (parseErr) {
-      console.error("Failed to parse Anthropic response body:", parseErr.message);
-      return Response.json({ error: "Unexpected response from AI. Please try again." }, { status: 500 });
-    }
-
-    if (data.stop_reason === "max_tokens") {
-      console.error("Anthropic hit max_tokens. Usage:", JSON.stringify(data.usage));
-      return Response.json({ error: "Story was too long to generate. Try fewer pages." }, { status: 500 });
-    }
-
-    // ── 6. Extract tool_use block ──────────────────────────────────────────
-    const toolBlock = Array.isArray(data.content)
-      ? data.content.find(b => b.type === "tool_use" && b.name === "create_story")
-      : null;
-
-    if (!toolBlock) {
-      console.error("No tool_use block. stop_reason:", data.stop_reason,
-        "content types:", data.content?.map(b => b.type));
-      return Response.json({ error: "AI did not return a story structure. Please try again." }, { status: 500 });
-    }
-
-    const story = toolBlock.input;
-
-    // ── 7. Validate the story object ──────────────────────────────────────
-    if (!story || typeof story !== "object") {
-      console.error("tool_use input is not an object:", typeof story);
-      return Response.json({ error: "Story data was malformed. Please try again." }, { status: 500 });
-    }
-    if (!Array.isArray(story.panels) || story.panels.length === 0) {
-      console.error("story.panels missing or empty. stop_reason:", data.stop_reason,
-        "story keys:", Object.keys(story || {}),
-        "story snippet:", JSON.stringify(story).slice(0, 800));
-      return Response.json({
-        error: `Story panels were missing (stop_reason: ${data.stop_reason}). Please try again.`
-      }, { status: 500 });
-    }
-
-    // ── 8. Inject character sheet into every illustration prompt ─────────
+    // ── 4. Inject character sheet into every illustration prompt ──────────
     if (story.character_sheet) {
       story.panels = story.panels.map(p => ({
         ...p,
@@ -165,8 +160,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     return Response.json(story);
 
   } catch (err) {
-    // Catch-all: should never reach here, but guarantees a JSON response
-    console.error("Unhandled error in /api/generate:", err?.message, err?.stack);
-    return Response.json({ error: "An unexpected error occurred. Please try again." }, { status: 500 });
+    console.error("Error in /api/generate:", err?.message);
+    return Response.json({ error: err.message || "An unexpected error occurred. Please try again." }, { status: 500 });
   }
 }
