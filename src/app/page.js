@@ -332,13 +332,15 @@ export default function Home() {
       }
 
       // ── Step 1: Generate a dedicated character reference image ───────────
-      // Uses a neutral-pose prompt (no scene) so Neolemon gets a clean
-      // character anchor rather than a busy scene image.
+      // Build a clean reference prompt from character_sheet (neutral pose,
+      // plain background) so Neolemon gets a proper character anchor rather
+      // than a busy scene image.
       setLoadingMsg("Sketching your character…");
       let characterRef = null;
-      if (storyData.character_reference_prompt) {
+      if (storyData.character_sheet) {
+        const refPrompt = `${storyData.character_sheet}, neutral standing pose, plain white background, full body visible, no scene elements`;
         try {
-          characterRef = await fetchImage(storyData.character_reference_prompt, null);
+          characterRef = await fetchImage(refPrompt, null);
         } catch {
           // Non-fatal — panels will generate without a reference
         }

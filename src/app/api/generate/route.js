@@ -45,10 +45,6 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
             type: "string",
             description: "One sentence describing the main character's permanent visual appearance — species, size, colors, clothing, and one distinctive feature. Used verbatim in every illustration prompt."
           },
-          character_reference_prompt: {
-            type: "string",
-            description: "A text-to-image prompt (under 25 words) for a character reference sheet: the main character only, neutral standing pose, plain white background, full body visible, no scene or props."
-          },
           panels: {
             type: "array",
             items: {
