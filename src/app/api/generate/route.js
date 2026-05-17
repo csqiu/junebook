@@ -36,7 +36,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       description: "Output a complete Chinese picture book story",
       input_schema: {
         type: "object",
-        required: ["title", "title_pinyin", "title_english", "character_sheet", "character_reference_prompt", "panels"],
+        required: ["title", "title_pinyin", "title_english", "character_sheet", "panels"],
         properties: {
           title:         { type: "string", description: "Story title in Chinese" },
           title_pinyin:  { type: "string", description: "Pinyin of the title with tone marks" },
@@ -127,6 +127,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     }
 
     if (data.stop_reason === "max_tokens") {
+      console.error("Anthropic hit max_tokens. Usage:", JSON.stringify(data.usage));
       return Response.json({ error: "Story was too long to generate. Try fewer pages." }, { status: 500 });
     }
 
@@ -149,8 +150,12 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       return Response.json({ error: "Story data was malformed. Please try again." }, { status: 500 });
     }
     if (!Array.isArray(story.panels) || story.panels.length === 0) {
-      console.error("story.panels missing or empty:", JSON.stringify(story).slice(0, 300));
-      return Response.json({ error: "Story panels were missing. Please try again." }, { status: 500 });
+      console.error("story.panels missing or empty. stop_reason:", data.stop_reason,
+        "story keys:", Object.keys(story || {}),
+        "story snippet:", JSON.stringify(story).slice(0, 800));
+      return Response.json({
+        error: `Story panels were missing (stop_reason: ${data.stop_reason}). Please try again.`
+      }, { status: 500 });
     }
 
     // ── 8. Inject character sheet into every illustration prompt ─────────
