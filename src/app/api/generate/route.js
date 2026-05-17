@@ -39,6 +39,10 @@ function extractStory(data) {
   if (!story || typeof story !== "object") {
     throw new Error("Story data was malformed.");
   }
+  // Claude occasionally JSON-encodes nested arrays as strings — unwrap if needed
+  if (typeof story.panels === "string") {
+    try { story.panels = JSON.parse(story.panels); } catch { /* leave as-is, will fail below */ }
+  }
   if (!Array.isArray(story.panels) || story.panels.length === 0) {
     const keys = Object.keys(story);
     const panelsVal = story.panels === undefined ? "undefined"
