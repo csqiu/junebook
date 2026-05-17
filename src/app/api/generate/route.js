@@ -36,14 +36,18 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       description: "Output a complete Chinese picture book story",
       input_schema: {
         type: "object",
-        required: ["title", "title_pinyin", "title_english", "character_sheet", "panels"],
+        required: ["title", "title_pinyin", "title_english", "character_sheet", "character_reference_prompt", "panels"],
         properties: {
           title:         { type: "string", description: "Story title in Chinese" },
           title_pinyin:  { type: "string", description: "Pinyin of the title with tone marks" },
           title_english: { type: "string", description: "English title" },
           character_sheet: {
             type: "string",
-            description: "One sentence describing the main character's permanent visual appearance — species, size, colors, clothing, and one distinctive feature."
+            description: "One sentence describing the main character's permanent visual appearance — species, size, colors, clothing, and one distinctive feature. Used verbatim in every illustration prompt."
+          },
+          character_reference_prompt: {
+            type: "string",
+            description: "A text-to-image prompt (under 25 words) for a character reference sheet: the main character only, neutral standing pose, plain white background, full body visible, no scene or props."
           },
           panels: {
             type: "array",
@@ -52,7 +56,10 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
               required: ["panel_number", "illustration_prompt", "chinese_text", "pinyin", "english_translation", "vocabulary"],
               properties: {
                 panel_number:        { type: "integer" },
-                illustration_prompt: { type: "string", description: "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT describe the character's appearance. Under 40 words." },
+                illustration_prompt: {
+                  type: "string",
+                  description: "Scene description for a children's watercolor illustration. Start by explicitly naming every character visible in this scene (e.g. 'The rabbit and the tortoise...'). Then describe setting, action, mood, time of day. Do NOT re-describe permanent appearance — that is handled separately. Under 45 words."
+                },
                 chinese_text:        { type: "string" },
                 pinyin:              { type: "string", description: "Full sentence pinyin with tone marks, syllables separated by spaces" },
                 english_translation: { type: "string" },
@@ -146,11 +153,11 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       return Response.json({ error: "Story panels were missing. Please try again." }, { status: 500 });
     }
 
-    // ── 8. Inject character sheet into illustration prompts ───────────────
+    // ── 8. Inject character sheet into every illustration prompt ─────────
     if (story.character_sheet) {
       story.panels = story.panels.map(p => ({
         ...p,
-        illustration_prompt: `Character reference (use consistently): ${story.character_sheet} Scene: ${p.illustration_prompt}`,
+        illustration_prompt: `${p.illustration_prompt} [Character: ${story.character_sheet}]`,
       }));
     }
 

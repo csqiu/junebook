@@ -318,10 +318,7 @@ export default function Home() {
       }));
       setPanels(initPanels);
       setPhase("book");
-      setProgress(60);
-
-      setLoadingMsg("Painting illustrations…");
-      const total = storyData.panels.length;
+      setProgress(45);
 
       async function fetchImage(prompt, anchorUrl) {
         const imgRes = await fetch("/api/image", {
@@ -334,26 +331,33 @@ export default function Home() {
         return imgData.url;
       }
 
-      // Panel 1 via fal.ai — produces a public URL used as Neolemon's character reference
-      let anchorUrl = null;
-      try {
-        anchorUrl = await fetchImage(storyData.panels[0].illustration_prompt, null);
-        setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "done", imageUrl: anchorUrl } : p));
-      } catch (err) {
-        setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "error", imageError: err.message } : p));
-      }
-      setProgress(70);
-
-      // Panels 2+ via Neolemon, using panel 1 as character reference
-      await Promise.all(storyData.panels.slice(1).map(async (panel, i) => {
-        const idx = i + 1;
+      // ── Step 1: Generate a dedicated character reference image ───────────
+      // Uses a neutral-pose prompt (no scene) so Neolemon gets a clean
+      // character anchor rather than a busy scene image.
+      setLoadingMsg("Sketching your character…");
+      let characterRef = null;
+      if (storyData.character_reference_prompt) {
         try {
-          const url = await fetchImage(panel.illustration_prompt, anchorUrl);
-          setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "done", imageUrl: url } : p));
-        } catch (imgErr) {
-          setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "error", imageError: imgErr.message } : p));
+          characterRef = await fetchImage(storyData.character_reference_prompt, null);
+        } catch {
+          // Non-fatal — panels will generate without a reference
         }
-        setProgress(70 + Math.round((i + 1) / (total - 1) * 28));
+      }
+      setProgress(58);
+
+      // ── Step 2: Generate all panels in parallel, each anchored to the
+      //            same character reference image for consistency ───────────
+      setLoadingMsg("Painting illustrations…");
+      const total = storyData.panels.length;
+
+      await Promise.all(storyData.panels.map(async (panel, i) => {
+        try {
+          const url = await fetchImage(panel.illustration_prompt, characterRef);
+          setPanels(prev => prev.map((p, j) => j === i ? { ...p, imageStatus: "done", imageUrl: url } : p));
+        } catch (imgErr) {
+          setPanels(prev => prev.map((p, j) => j === i ? { ...p, imageStatus: "error", imageError: imgErr.message } : p));
+        }
+        setProgress(58 + Math.round((i + 1) / total * 40));
       }));
 
       setProgress(100);
