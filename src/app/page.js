@@ -45,15 +45,6 @@ function PasswordGate({ onUnlock }) {
   );
 }
 
-// ─── Build per-character pinyin from flat sentence pinyin ─────────────────────
-function buildCharacterPinyin(chineseText, flatPinyin) {
-  if (!flatPinyin || !chineseText) return [];
-  const syllables = flatPinyin.trim().split(/\s+/);
-  // Only match actual CJK ideographs — more reliable than an exclusion list
-  const chars = Array.from(chineseText).filter(ch => /[一-鿿㐀-䶿]/u.test(ch));
-  return chars.map((char, i) => ({ char, pinyin: syllables[i] || "" }));
-}
-
 // ─── Word Popover ─────────────────────────────────────────────────────────────
 function WordPopover({ entry, onClose }) {
   if (!entry) return null;
@@ -78,11 +69,14 @@ function WordPopover({ entry, onClose }) {
 
 // ─── Clickable Chinese Text ───────────────────────────────────────────────────
 function ClickableText({ text, characterPinyin, showPinyin, vocabulary, onWordClick }) {
-  const pinyinMap = {};
+  // Fallback lookup by character content, used only if the model's per-character
+  // pinyin array ever drifts out of position relative to the text.
+  const pinyinByChar = {};
   if (characterPinyin) {
-    characterPinyin.forEach(({ char, pinyin }) => { if (pinyin) pinyinMap[char] = pinyin; });
+    characterPinyin.forEach(({ char, pinyin }) => { if (pinyin && !(char in pinyinByChar)) pinyinByChar[char] = pinyin; });
   }
   const chars = Array.from(text);
+  let cjkIdx = 0;
   return (
     <span>
       {chars.map((ch, i) => {
@@ -92,7 +86,9 @@ function ClickableText({ text, characterPinyin, showPinyin, vocabulary, onWordCl
             ? <ruby key={i} style={{ pointerEvents: "none" }}>{ch}<rt></rt></ruby>
             : <span key={i}>{ch}</span>;
         }
-        const py = showPinyin ? pinyinMap[ch] : null;
+        const entry = characterPinyin?.[cjkIdx];
+        cjkIdx++;
+        const py = showPinyin ? (entry?.char === ch ? entry.pinyin : pinyinByChar[ch]) : null;
         if (showPinyin) {
           return (
             <ruby key={i} className="char-ruby" onClick={() => onWordClick?.(ch, vocabulary)}>
@@ -312,7 +308,6 @@ export default function Home() {
 
       const initPanels = storyData.panels.map(p => ({
         ...p,
-        character_pinyin: buildCharacterPinyin(p.chinese_text, p.pinyin),
         imageStatus: "loading",
         imageUrl: null,
       }));

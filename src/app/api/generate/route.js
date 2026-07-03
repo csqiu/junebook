@@ -51,12 +51,23 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
             type: "array",
             items: {
               type: "object",
-              required: ["panel_number", "illustration_prompt", "chinese_text", "pinyin", "english_translation", "vocabulary"],
+              required: ["panel_number", "illustration_prompt", "chinese_text", "character_pinyin", "english_translation", "vocabulary"],
               properties: {
                 panel_number:        { type: "integer" },
                 illustration_prompt: { type: "string", description: "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT describe the character's appearance. Under 40 words." },
                 chinese_text:        { type: "string" },
-                pinyin:              { type: "string", description: "Full sentence pinyin with tone marks, syllables separated by spaces" },
+                character_pinyin: {
+                  type: "array",
+                  description: "Pinyin with tone marks for chinese_text, one entry per Chinese character in reading order, skipping punctuation and whitespace. Must have exactly one entry per Chinese character in chinese_text, in the same order.",
+                  items: {
+                    type: "object",
+                    required: ["char", "pinyin"],
+                    properties: {
+                      char:   { type: "string", description: "A single Chinese character from chinese_text" },
+                      pinyin: { type: "string", description: "That character's pinyin syllable with tone marks, in this sentence's context" }
+                    }
+                  }
+                },
                 english_translation: { type: "string" },
                 vocabulary: {
                   type: "array",
