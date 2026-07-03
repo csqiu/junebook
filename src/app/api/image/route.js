@@ -75,7 +75,7 @@ async function uploadToSegmindStorage(base64, contentType) {
   }
 
   const data = await res.json();
-  const url = data.urls?.[0] || data.url || data.data_urls?.[0] || data.assets?.[0]?.url;
+  const url = data.file_urls?.[0] || data.urls?.[0] || data.url || data.data_urls?.[0] || data.assets?.[0]?.url;
   if (!url) throw new Error(`Segmind storage upload returned no URL. Response keys: ${Object.keys(data).join(", ")}`);
   return url;
 }
