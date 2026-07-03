@@ -1,9 +1,6 @@
-const STYLE_TAG = ", loose ink and wash children's book illustration, expressive flowing ink brushwork with watercolor washes that bleed beyond the lines, spontaneous gestural painting, warm palette of amber and terracotta and ink black with golden accents, cute round-faced character design, minimal airy background, traditional Chinese ink wash painting inspired, painterly and tender mood";
+const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable and child-friendly";
 
-// Restored from the pre-Neolemon fal.ai calls — this negative prompt never made
-// it over to the Segmind calls, which is a large part of why unanchored (panel 1)
-// generations drift toward photorealistic/3D output instead of the intended style.
-const NEGATIVE_PROMPT = "flat vector art, hard uniform outlines, dark backgrounds, cool colors, blue tones, photorealistic, 3D render, western cartoon, anime, manga, complex cluttered background, duplicate characters, multiple copies of same character, clones, extra limbs, text, watermark";
+const NEGATIVE_PROMPT = "realistic proportions, adult body, adult face, mature facial features, gaunt face, long adult limbs, fine art painting, gallery painting, photorealistic, hyper-detailed rendering, 3D render, flat vector art, hard uniform outlines, dark backgrounds, cool colors, blue tones, anime, manga, complex cluttered background, duplicate characters, multiple copies of same character, clones, extra limbs, text, watermark";
 
 async function readSegmindImage(res) {
   const contentType = res.headers.get("content-type") || "";

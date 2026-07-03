@@ -45,7 +45,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
           title_english: { type: "string", description: "English title" },
           character_sheet: {
             type: "string",
-            description: "One sentence describing the main character's permanent visual appearance — species, size, colors, clothing, and one distinctive feature."
+            description: "One sentence describing the main character's permanent visual appearance, for an image generation model with no other context. Must start by stating age and gender or species explicitly (e.g. 'A young girl...', 'A little boy...', 'A small rabbit...') — an image model will default to a generic adult if this is left implicit. Then describe size, colors, clothing, hairstyle, and one distinctive feature."
           },
           panels: {
             type: "array",
@@ -117,10 +117,15 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     }
 
     // ── 5. Inject character sheet into illustration prompts ───────────────
+    // Repeats the user's literal main-character text verbatim alongside Claude's
+    // character_sheet paraphrase — a redundant anchor in case the paraphrase drops
+    // a detail (age/gender in particular) that the image model needs to be told
+    // explicitly rather than left implicit.
     if (story.character_sheet) {
+      const mainCharLine = mainChar?.trim() ? ` Main character: ${mainChar.trim()}.` : "";
       story.panels = story.panels.map(p => ({
         ...p,
-        illustration_prompt: `Character reference (use consistently): ${story.character_sheet} Scene: ${p.illustration_prompt}`,
+        illustration_prompt: `Character reference (use consistently):${mainCharLine} ${story.character_sheet} Scene: ${p.illustration_prompt}`,
       }));
     }
 
