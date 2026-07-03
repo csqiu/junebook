@@ -2,6 +2,10 @@ const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft 
 
 const NEGATIVE_PROMPT = "realistic proportions, adult body, adult face, mature facial features, gaunt face, long adult limbs, fine art painting, gallery painting, photorealistic, hyper-detailed rendering, 3D render, flat vector art, hard uniform outlines, dark backgrounds, cool colors, blue tones, anime, manga, complex cluttered background, duplicate characters, multiple copies of same character, clones, extra limbs, text, watermark";
 
+// How strongly panels 2+ follow the panel-1 reference vs. their own scene prompt.
+// Higher = more consistent character, but risks dragging along panel 1's pose/composition.
+const ADAPTER_STRENGTH = 0.65;
+
 async function readSegmindImage(res) {
   const contentType = res.headers.get("content-type") || "";
 
@@ -11,87 +15,86 @@ async function readSegmindImage(res) {
     throw new Error(err.message || err.error || `Segmind error: ${res.status}`);
   }
 
-  // On success Segmind returns the image as raw bytes (image/jpeg, image/png, ...)
-  // rather than JSON — only decode as JSON if it actually says so.
+  // Success can come back as raw image bytes or as JSON with a base64 field —
+  // requesting base64:true below biases toward JSON, but handle either.
   if (contentType.includes("application/json")) {
     const data = await res.json();
     const base64 = data.image;
     if (!base64) throw new Error("No image returned from Segmind");
-    return { base64, contentType: "image/png" };
+    return base64;
   }
 
   const buf = Buffer.from(await res.arrayBuffer());
-  return { base64: buf.toString("base64"), contentType: contentType || "image/jpeg" };
+  return buf.toString("base64");
 }
 
-// Neolemon V3 generates every panel. Panel 1 has no reference (ip_image
-// omitted) and establishes the character; panels 2+ pass panel 1's own
-// output back in as ip_image so the character stays visually consistent.
-async function generateImage(prompt, ipImage) {
-  const body = {
-    prompt: prompt + STYLE_TAG,
-    negative_prompt: NEGATIVE_PROMPT,
-    steps: 20,
-    guidance_scale: 3,
-    width: 1024,
-    height: 768,
-    seed: Math.floor(Math.random() * 2147483647),
-  };
-  if (ipImage) body.ip_image = ipImage;
-
-  const res = await fetch("https://api.segmind.com/v1/consistent-character-AI-neolemon-v3", {
+// Panel 1: Flux Dev, plain text-to-image — this is the same model that reliably
+// hit the intended watercolor/ink-wash style when it ran through fal.ai, now
+// called directly on Segmind instead of pulling in a second provider.
+async function generateBaseImage(prompt) {
+  const res = await fetch("https://api.segmind.com/v1/flux-dev", {
     method: "POST",
     headers: {
       "x-api-key": process.env.SEGMIND_API_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      prompt: prompt + STYLE_TAG,
+      negative_prompt: NEGATIVE_PROMPT,
+      steps: 28,
+      guidance_scale: 3.5,
+      width: 1024,
+      height: 768,
+      seed: Math.floor(Math.random() * 2147483647),
+      base64: true,
+    }),
   });
 
   return readSegmindImage(res);
 }
 
-// Neolemon's ip_image parameter needs a real hosted URL, not a base64 blob —
-// this is what fal.ai used to provide for panel 1 before it was removed.
-// Segmind's own asset storage fills the same role without adding another
-// image provider: upload panel 1's own output, get back a URL, and use that
-// as ip_image for every later panel.
-async function uploadToSegmindStorage(base64, contentType) {
-  const res = await fetch("https://workflows-api.segmind.com/upload-asset", {
+// Panels 2+: Flux IP-Adapter, feeding panel 1's own image back in as the
+// reference so the character stays visually consistent across the story.
+async function generateReferencedImage(prompt, referenceBase64) {
+  const res = await fetch("https://api.segmind.com/v1/flux-ipadapter", {
     method: "POST",
     headers: {
       "x-api-key": process.env.SEGMIND_API_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ data_urls: [`data:${contentType};base64,${base64}`] }),
+    body: JSON.stringify({
+      prompt: prompt + STYLE_TAG,
+      negative_prompt: NEGATIVE_PROMPT,
+      image: referenceBase64,
+      adapter_strength: ADAPTER_STRENGTH,
+      steps: 28,
+      guidance_scale: 3.5,
+      width: 1024,
+      height: 768,
+      seed: Math.floor(Math.random() * 2147483647),
+      base64: true,
+    }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || err.error || `Segmind storage upload error: ${res.status}`);
-  }
+  return readSegmindImage(res);
+}
 
-  const data = await res.json();
-  const url = data.file_urls?.[0] || data.urls?.[0] || data.url || data.data_urls?.[0] || data.assets?.[0]?.url;
-  if (!url) throw new Error(`Segmind storage upload returned no URL. Response keys: ${Object.keys(data).join(", ")}`);
-  return url;
+// The client sends back whatever panel 1 returned as `anchorUrl` for every
+// later panel — that's a data: URI (see below), so strip it back down to the
+// raw base64 payload the API itself expects.
+function stripDataUriPrefix(value) {
+  const match = /^data:[^,]*;base64,(.*)$/s.exec(value);
+  return match ? match[1] : value;
 }
 
 export async function POST(request) {
   const { prompt, anchorUrl } = await request.json();
 
   try {
-    if (anchorUrl) {
-      // Panels 2+: anchorUrl is already a real hosted URL from panel 1's upload
-      const { base64, contentType } = await generateImage(prompt, anchorUrl);
-      return Response.json({ url: `data:${contentType};base64,${base64}` });
-    }
-
-    // Panel 1: generate with no reference, then upload the result so it can
-    // be reused as ip_image for every subsequent panel.
-    const { base64, contentType } = await generateImage(prompt, null);
-    const url = await uploadToSegmindStorage(base64, contentType);
-    return Response.json({ url });
+    const base64 = anchorUrl
+      ? await generateReferencedImage(prompt, stripDataUriPrefix(anchorUrl))
+      : await generateBaseImage(prompt);
+    return Response.json({ url: `data:image/png;base64,${base64}` });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
