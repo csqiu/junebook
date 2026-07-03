@@ -334,7 +334,7 @@ export default function Home() {
         return imgData.url;
       }
 
-      // Panel 1 via fal.ai — produces a public URL used as Neolemon's character reference
+      // Panel 1 establishes the character (no reference image yet)
       let anchorUrl = null;
       try {
         anchorUrl = await fetchImage(storyData.panels[0].illustration_prompt, null);

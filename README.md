@@ -8,7 +8,7 @@
 3. Choose **"Upload"** and drag this entire folder
 4. Before deploying, add these **Environment Variables**:
    - `ANTHROPIC_API_KEY` = your Anthropic key
-   - `FAL_KEY` = your fal.ai key
+   - `SEGMIND_API_KEY` = your Segmind key
    - `NEXT_PUBLIC_APP_PASSWORD` = June
 5. Click **Deploy**
 
@@ -29,5 +29,5 @@ npm run dev
 | Variable | Description |
 |---|---|
 | `ANTHROPIC_API_KEY` | Your Anthropic API key (sk-ant-...) |
-| `FAL_KEY` | Your fal.ai API key |
+| `SEGMIND_API_KEY` | Your Segmind API key (powers all illustration generation via Neolemon V3) |
 | `NEXT_PUBLIC_APP_PASSWORD` | Password for the app gate (default: June) |

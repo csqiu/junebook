@@ -1,3 +1,5 @@
+import { CLAUDE_MODEL } from "../../../lib/constants";
+
 export async function POST(request) {
   const { char } = await request.json();
 
@@ -9,7 +11,7 @@ export async function POST(request) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: CLAUDE_MODEL,
       max_tokens: 300,
       system: "Return only valid JSON, no markdown.",
       messages: [{

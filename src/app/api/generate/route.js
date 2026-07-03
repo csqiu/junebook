@@ -1,3 +1,5 @@
+import { CLAUDE_MODEL } from "../../../lib/constants";
+
 // Allow up to 5 min execution — long stories need time to generate
 export const maxDuration = 300;
 
@@ -88,7 +90,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: CLAUDE_MODEL,
           max_tokens: 16000,
           system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
           tools: [storyTool],
