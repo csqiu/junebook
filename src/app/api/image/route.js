@@ -22,14 +22,26 @@ async function generateImage(prompt, ipImage) {
     },
     body: JSON.stringify(body),
   });
+
+  const contentType = res.headers.get("content-type") || "";
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+    // Error responses come back as JSON even when success responses are raw image bytes
+    const err = contentType.includes("application/json") ? await res.json().catch(() => ({})) : {};
     throw new Error(err.message || err.error || `Segmind error: ${res.status}`);
   }
-  const data = await res.json();
-  const base64 = data.image;
-  if (!base64) throw new Error("No image returned from Segmind");
-  return `data:image/png;base64,${base64}`;
+
+  // On success Segmind returns the image as raw bytes (image/jpeg, image/png, ...)
+  // rather than JSON — only decode as JSON if it actually says so.
+  if (contentType.includes("application/json")) {
+    const data = await res.json();
+    const base64 = data.image;
+    if (!base64) throw new Error("No image returned from Segmind");
+    return `data:image/png;base64,${base64}`;
+  }
+
+  const buf = Buffer.from(await res.arrayBuffer());
+  return `data:${contentType || "image/jpeg"};base64,${buf.toString("base64")}`;
 }
 
 export async function POST(request) {
