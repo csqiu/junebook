@@ -1,4 +1,4 @@
-import { CLAUDE_MODEL } from "../../../lib/constants";
+import { callClaudeTool } from "../../../lib/anthropic";
 
 // Allow up to 5 min execution — long stories need time to generate
 export const maxDuration = 300;
@@ -90,76 +90,33 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       }
     };
 
-    // ── 3. Call Anthropic API ──────────────────────────────────────────────
-    let apiRes;
-    try {
-      apiRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: CLAUDE_MODEL,
-          max_tokens: 16000,
-          system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
-          tools: [storyTool],
-          tool_choice: { type: "tool", name: "create_story" },
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-    } catch (fetchErr) {
-      console.error("Network error calling Anthropic API:", fetchErr.message);
-      return Response.json({ error: "Network error reaching AI service. Please try again." }, { status: 500 });
+    // ── 3. Call Claude ──────────────────────────────────────────────────────
+    const callResult = await callClaudeTool({
+      system: "You are a Chinese children's book author. Create charming, culturally authentic stories for young children.",
+      tool: storyTool,
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: 16000,
+    });
+
+    if (!callResult.ok) {
+      console.error("Story generation failed:", callResult);
+      const errMsg = callResult.reason === "max_tokens"
+        ? "Story was too long to generate. Try fewer pages."
+        : callResult.reason === "no_tool_block"
+          ? "AI did not return a story structure. Please try again."
+          : callResult.message;
+      return Response.json({ error: errMsg }, { status: 500 });
     }
 
-    // ── 4. Handle non-OK HTTP from Anthropic ──────────────────────────────
-    if (!apiRes.ok) {
-      let errBody = {};
-      try { errBody = await apiRes.json(); } catch { /* ignore */ }
-      const msg = errBody.error?.message || `Anthropic API returned ${apiRes.status}`;
-      console.error("Anthropic non-OK response:", apiRes.status, msg);
-      return Response.json({ error: msg }, { status: 500 });
-    }
+    const story = callResult.result;
 
-    // ── 5. Parse Anthropic response body ──────────────────────────────────
-    let data;
-    try {
-      data = await apiRes.json();
-    } catch (parseErr) {
-      console.error("Failed to parse Anthropic response body:", parseErr.message);
-      return Response.json({ error: "Unexpected response from AI. Please try again." }, { status: 500 });
-    }
-
-    if (data.stop_reason === "max_tokens") {
-      return Response.json({ error: "Story was too long to generate. Try fewer pages." }, { status: 500 });
-    }
-
-    // ── 6. Extract tool_use block ──────────────────────────────────────────
-    const toolBlock = Array.isArray(data.content)
-      ? data.content.find(b => b.type === "tool_use" && b.name === "create_story")
-      : null;
-
-    if (!toolBlock) {
-      console.error("No tool_use block. stop_reason:", data.stop_reason,
-        "content types:", data.content?.map(b => b.type));
-      return Response.json({ error: "AI did not return a story structure. Please try again." }, { status: 500 });
-    }
-
-    const story = toolBlock.input;
-
-    // ── 7. Validate the story object ──────────────────────────────────────
-    if (!story || typeof story !== "object") {
-      console.error("tool_use input is not an object:", typeof story);
-      return Response.json({ error: "Story data was malformed. Please try again." }, { status: 500 });
-    }
+    // ── 4. Validate the story object ────────────────────────────────────────
     if (!Array.isArray(story.panels) || story.panels.length === 0) {
       console.error("story.panels missing or empty:", JSON.stringify(story).slice(0, 300));
       return Response.json({ error: "Story panels were missing. Please try again." }, { status: 500 });
     }
 
-    // ── 8. Inject character sheet into illustration prompts ───────────────
+    // ── 5. Inject character sheet into illustration prompts ───────────────
     if (story.character_sheet) {
       story.panels = story.panels.map(p => ({
         ...p,
