@@ -1,6 +1,5 @@
-import { PANEL_EMOJIS } from "../../lib/constants";
-import ClickableText from "./ClickableText";
 import PanelViewer from "./PanelViewer";
+import PdfExportLayer from "./PdfExportLayer";
 
 export default function BookViewer({
   story, panels, currentPanelIdx, animKey, animDir,
@@ -57,34 +56,13 @@ export default function BookViewer({
         </div>
       </div>
 
-      {/* Hidden PDF render container */}
-      <div ref={pdfRef} className="pdf-hidden-container" aria-hidden="true">
-        {panels.map((panel, i) => {
-          const emoji = PANEL_EMOJIS[panel.panel_number % PANEL_EMOJIS.length];
-          return (
-            <div key={i} className="pdf-panel-item">
-              {panel.imageStatus === "done" && panel.imageUrl
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img className="pdf-panel-img" src={panel.imageUrl} crossOrigin="anonymous" alt="" />
-                : <div className="pdf-panel-placeholder">{emoji}</div>
-              }
-              <div className="pdf-panel-body">
-                <div className="pdf-panel-page">Page {panel.panel_number} of {panels.length}</div>
-                <div className="pdf-panel-chinese">
-                  <ClickableText
-                    text={panel.chinese_text}
-                    characterPinyin={panel.character_pinyin}
-                    showPinyin={showPinyin}
-                    vocabulary={[]}
-                  />
-                </div>
-                {showEnglish && <div className="pdf-panel-english">{panel.english_translation}</div>}
-                <div className="pdf-panel-branding">Junebook · {story.title_english}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <PdfExportLayer
+        pdfRef={pdfRef}
+        panels={panels}
+        showPinyin={showPinyin}
+        showEnglish={showEnglish}
+        story={story}
+      />
     </div>
   );
 }

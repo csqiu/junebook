@@ -10,8 +10,13 @@ export default function ClickableText({ text, characterPinyin, showPinyin, vocab
   return (
     <span>
       {chars.map((ch, i) => {
-        const isPunct = /[\s，。！？、：；""''【】（）]/u.test(ch);
-        if (isPunct) {
+        // Match actual CJK ideographs rather than excluding known punctuation —
+        // an exclusion list misses embedded Latin text (e.g. a name like "June")
+        // and less-common punctuation (「」『』, …, —), each of which would
+        // otherwise consume a characterPinyin slot meant for a later character
+        // and desync the alignment for the rest of the string.
+        const isCJK = /[一-鿿㐀-䶿]/u.test(ch);
+        if (!isCJK) {
           return showPinyin
             ? <ruby key={i} style={{ pointerEvents: "none" }}>{ch}<rt></rt></ruby>
             : <span key={i}>{ch}</span>;

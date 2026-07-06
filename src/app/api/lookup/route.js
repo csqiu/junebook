@@ -27,6 +27,9 @@ export async function POST(request) {
   } catch {
     return Response.json(fallbackEntry("", "Invalid request."));
   }
+  if (!body || typeof body !== "object") {
+    return Response.json(fallbackEntry("", "Invalid request."));
+  }
   const { char } = body;
   if (typeof char !== "string" || !char.trim()) {
     return Response.json(fallbackEntry(char || "", "No character was provided."));

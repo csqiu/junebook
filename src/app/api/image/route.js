@@ -25,6 +25,7 @@ async function readSegmindImage(res) {
   }
 
   const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length === 0) throw new Error("Empty image returned from Segmind");
   return buf.toString("base64");
 }
 
@@ -46,6 +47,7 @@ async function generateBaseImage(prompt) {
       width: 1024,
       height: 768,
       seed: Math.floor(Math.random() * 2147483647),
+      enable_safety_checker: true,
       base64: true,
     }),
   });
@@ -72,6 +74,7 @@ async function generateReferencedImage(prompt, referenceBase64) {
       width: 1024,
       height: 768,
       seed: Math.floor(Math.random() * 2147483647),
+      enable_safety_checker: true,
       base64: true,
     }),
   });
@@ -79,22 +82,62 @@ async function generateReferencedImage(prompt, referenceBase64) {
   return readSegmindImage(res);
 }
 
-// The client sends back whatever panel 1 returned as `anchorUrl` for every
-// later panel — that's a data: URI (see below), so strip it back down to the
-// raw base64 payload the API itself expects.
-function stripDataUriPrefix(value) {
-  const match = /^data:[^,]*;base64,(.*)$/s.exec(value);
-  return match ? match[1] : value;
+// Panel 1's own output is reused as the character reference for every later
+// panel. Uploading it once via Segmind's own asset storage means the client
+// only ever carries a short URL as `anchorUrl` instead of resending the full
+// multi-MB base64 image on every one of the (up to 15) concurrent panel calls.
+async function uploadToSegmindStorage(base64, contentType) {
+  const res = await fetch("https://workflows-api.segmind.com/upload-asset", {
+    method: "POST",
+    headers: {
+      "x-api-key": process.env.SEGMIND_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ data_urls: [`data:${contentType};base64,${base64}`] }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.error || `Segmind storage upload error: ${res.status}`);
+  }
+
+  const data = await res.json();
+  const url = data.file_urls?.[0] || data.urls?.[0] || data.url;
+  if (!url) throw new Error(`Segmind storage upload returned no URL. Response keys: ${Object.keys(data).join(", ")}`);
+  return url;
+}
+
+async function fetchAsBase64(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch reference image: ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length === 0) throw new Error("Reference image fetch returned no data");
+  return buf.toString("base64");
 }
 
 export async function POST(request) {
-  const { prompt, anchorUrl } = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const { prompt, anchorUrl } = body || {};
 
   try {
-    const base64 = anchorUrl
-      ? await generateReferencedImage(prompt, stripDataUriPrefix(anchorUrl))
-      : await generateBaseImage(prompt);
-    return Response.json({ url: `data:image/png;base64,${base64}` });
+    if (anchorUrl) {
+      // anchorUrl is panel 1's own hosted URL — fetch it once per call rather
+      // than trust the client to resend the full image bytes each time.
+      const referenceBase64 = await fetchAsBase64(anchorUrl);
+      const base64 = await generateReferencedImage(prompt, referenceBase64);
+      return Response.json({ url: `data:image/png;base64,${base64}` });
+    }
+
+    // Panel 1: generate with no reference, then upload the result so every
+    // later panel can reuse it as a compact URL instead of a multi-MB blob.
+    const base64 = await generateBaseImage(prompt);
+    const url = await uploadToSegmindStorage(base64, "image/png");
+    return Response.json({ url });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
