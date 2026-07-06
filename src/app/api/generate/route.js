@@ -113,6 +113,10 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     const story = callResult.result;
 
     // ── 4. Validate the story object ────────────────────────────────────────
+    if (!story || typeof story !== "object") {
+      console.error("tool_use input is not an object:", typeof story);
+      return Response.json({ error: "Story data was malformed. Please try again." }, { status: 500 });
+    }
     if (!Array.isArray(story.panels) || story.panels.length === 0) {
       console.error("story.panels missing or empty:", JSON.stringify(story).slice(0, 300));
       return Response.json({ error: "Story panels were missing. Please try again." }, { status: 500 });
@@ -124,8 +128,11 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     // a detail (age/gender in particular) that the image model needs to be told
     // explicitly rather than left implicit. The two are injected independently so
     // an empty character_sheet (schema requires it be present, not non-empty)
-    // doesn't also wipe out the user's own mainChar anchor.
-    const mainCharLine = mainChar?.trim() ? ` Main character: ${mainChar.trim()}.` : "";
+    // doesn't also wipe out the user's own mainChar anchor. Uses the same
+    // fallback as the story prompt above so the default character gets this
+    // anchor too, not just explicitly-typed ones.
+    const mainCharText = (mainChar || "a little rabbit").trim().replace(/[.!?]+$/, "");
+    const mainCharLine = mainCharText ? ` Main character: ${mainCharText}.` : "";
     const characterSheetLine = story.character_sheet ? ` ${story.character_sheet}` : "";
     if (mainCharLine || characterSheetLine) {
       story.panels = story.panels.map(p => ({

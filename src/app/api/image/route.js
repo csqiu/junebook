@@ -107,8 +107,24 @@ async function uploadToSegmindStorage(base64, contentType) {
   return url;
 }
 
+// anchorUrl always originates from our own uploadToSegmindStorage() call and
+// is only ever echoed back by the client verbatim — but since it's still a
+// client-supplied field on a public route, restrict what the server will
+// actually fetch to Segmind's own domains rather than trusting it blindly
+// (an unrestricted server-side fetch of a client-given URL is an SSRF vector).
+function isAllowedSegmindUrl(url) {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === "https:" && /(^|\.)segmind\.com$/.test(hostname);
+  } catch {
+    return false;
+  }
+}
+
 async function fetchAsBase64(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: { "x-api-key": process.env.SEGMIND_API_KEY },
+  });
   if (!res.ok) throw new Error(`Failed to fetch reference image: ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length === 0) throw new Error("Reference image fetch returned no data");
@@ -120,9 +136,15 @@ export async function POST(request) {
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Invalid request body." }, { status: 400 });
+    return Response.json({ error: "Invalid request." }, { status: 400 });
   }
   const { prompt, anchorUrl } = body || {};
+  if (typeof prompt !== "string" || !prompt.trim()) {
+    return Response.json({ error: "Missing illustration prompt." }, { status: 400 });
+  }
+  if (anchorUrl && !isAllowedSegmindUrl(anchorUrl)) {
+    return Response.json({ error: "Invalid reference image URL." }, { status: 400 });
+  }
 
   try {
     if (anchorUrl) {
@@ -139,6 +161,9 @@ export async function POST(request) {
     const url = await uploadToSegmindStorage(base64, "image/png");
     return Response.json({ url });
   } catch (err) {
-    return Response.json({ error: err.message }, { status: 500 });
+    // Log the raw diagnostic (can include Segmind response internals) server-side
+    // only, matching /api/generate's error-sanitization — never forward it as-is.
+    console.error("Image generation failed:", err?.message);
+    return Response.json({ error: "Could not generate this illustration. Please try again." }, { status: 500 });
   }
 }

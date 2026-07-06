@@ -14,7 +14,7 @@ export default function PanelViewer({ panel, showPinyin, showEnglish, onWordClic
         )}
         {panel.imageStatus === "done" && panel.imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="panel-full-img" src={panel.imageUrl} crossOrigin="anonymous" alt={`Panel ${panel.panel_number}`} />
+          <img className="panel-full-img" src={panel.imageUrl} alt={`Panel ${panel.panel_number}`} />
         )}
         {(panel.imageStatus === "error" || panel.imageStatus === "none") && (
           <div className="panel-full-placeholder">
