@@ -1,3 +1,10 @@
+// Without this, serverless platforms default to a short timeout (e.g. 10-15s
+// on Vercel) — fine for a single Segmind call, but panels 2+ now make two
+// sequential calls (fetch the anchor image, then a full Flux IP-Adapter
+// generation), which combined with GPU queueing under concurrent panel
+// requests can easily exceed that default and get killed mid-request.
+export const maxDuration = 300;
+
 const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable and child-friendly";
 
 const NEGATIVE_PROMPT = "realistic proportions, adult body, adult face, mature facial features, gaunt face, long adult limbs, fine art painting, gallery painting, photorealistic, hyper-detailed rendering, 3D render, flat vector art, hard uniform outlines, dark backgrounds, cool colors, blue tones, anime, manga, complex cluttered background, duplicate characters, multiple copies of same character, clones, extra limbs, text, watermark";
