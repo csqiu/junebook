@@ -49,7 +49,7 @@ async function generateBaseImage(prompt) {
     body: JSON.stringify({
       prompt: prompt + STYLE_TAG,
       negative_prompt: NEGATIVE_PROMPT,
-      steps: 28,
+      steps: 20,
       guidance_scale: 3.5,
       width: 1024,
       height: 768,
@@ -76,7 +76,7 @@ async function generateReferencedImage(prompt, referenceBase64) {
       negative_prompt: NEGATIVE_PROMPT,
       image: referenceBase64,
       adapter_strength: ADAPTER_STRENGTH,
-      steps: 28,
+      steps: 20,
       guidance_scale: 3.5,
       width: 1024,
       height: 768,

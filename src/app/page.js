@@ -7,6 +7,23 @@ import SetupForm from "./components/SetupForm";
 import LoadingScreen from "./components/LoadingScreen";
 import BookViewer from "./components/BookViewer";
 
+const PANEL_IMAGE_CONCURRENCY = 3;
+
+// Runs `worker` over `items` with at most `limit` in flight at once. Firing
+// every panel's illustration request in full parallel competes for the same
+// GPU capacity on Segmind's end, which was causing later panels to time out
+// under a full 15-way burst.
+async function runWithConcurrencyLimit(items, limit, worker) {
+  let nextIndex = 0;
+  async function runNext() {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      await worker(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runNext));
+}
+
 export default function Home() {
   const [unlocked, setUnlocked] = useState(false);
   const [panelCount, setPanelCount] = useState(6);
@@ -162,8 +179,9 @@ export default function Home() {
       }
       setProgress(70);
 
-      // Panels 2+ via Neolemon, using panel 1 as character reference
-      await Promise.all(storyData.panels.slice(1).map(async (panel, i) => {
+      // Panels 2+ via Flux IP-Adapter, using panel 1 as character reference —
+      // throttled rather than fully parallel (see runWithConcurrencyLimit).
+      await runWithConcurrencyLimit(storyData.panels.slice(1), PANEL_IMAGE_CONCURRENCY, async (panel, i) => {
         const idx = i + 1;
         try {
           const url = await fetchImage(panel.illustration_prompt, anchorUrl);
@@ -172,7 +190,7 @@ export default function Home() {
           setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "error", imageError: imgErr.message } : p));
         }
         setProgress(70 + Math.round((i + 1) / (total - 1) * 28));
-      }));
+      });
 
       setProgress(100);
     } catch (err) {
