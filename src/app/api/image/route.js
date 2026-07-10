@@ -1,7 +1,6 @@
 // Without this, serverless platforms default to a short timeout (e.g. 10-15s
-// on Vercel) — panel 1 makes two sequential Segmind calls (generate, then
-// upload to storage), and GPU queueing under up to 15 concurrent panel
-// requests can push any single call past that default and get it killed
+// on Vercel) — a single Flux generation call plus GPU queueing under up to
+// 15 concurrent panel requests can push past that default and get killed
 // mid-request.
 export const maxDuration = 300;
 
@@ -62,13 +61,12 @@ async function generateBaseImage(prompt) {
   return readSegmindImage(res);
 }
 
-// Panels 2+: Flux IP-Adapter, feeding panel 1's own hosted URL back in as the
+// Panels 2+: Flux IP-Adapter, feeding panel 1's own image data back in as the
 // reference so the character stays visually consistent across the story.
-// Passing the URL directly (rather than fetching it ourselves and re-sending
-// the bytes) lets Segmind's own infrastructure fetch it server-to-server —
-// the same pattern Neolemon's ip_image used, and a single hop per panel
-// instead of two.
-async function generateReferencedImage(prompt, referenceUrl) {
+// flux-ipadapter's `image` field rejects a URL ("The string did not match
+// the expected pattern") — confirmed live — so this needs the actual base64
+// bytes, unlike Neolemon's ip_image which took a URL.
+async function generateReferencedImage(prompt, referenceBase64) {
   const res = await fetch("https://api.segmind.com/v1/flux-ipadapter", {
     method: "POST",
     headers: {
@@ -78,7 +76,7 @@ async function generateReferencedImage(prompt, referenceUrl) {
     body: JSON.stringify({
       prompt: prompt + STYLE_TAG,
       negative_prompt: NEGATIVE_PROMPT,
-      image: referenceUrl,
+      image: referenceBase64,
       adapter_strength: ADAPTER_STRENGTH,
       steps: 20,
       guidance_scale: 3.5,
@@ -93,43 +91,12 @@ async function generateReferencedImage(prompt, referenceUrl) {
   return readSegmindImage(res);
 }
 
-// Panel 1's own output is reused as the character reference for every later
-// panel. Uploading it once via Segmind's own asset storage means the client
-// only ever carries a short URL as `anchorUrl` instead of resending the full
-// multi-MB base64 image on every one of the (up to 15) concurrent panel calls.
-async function uploadToSegmindStorage(base64, contentType) {
-  const res = await fetch("https://workflows-api.segmind.com/upload-asset", {
-    method: "POST",
-    headers: {
-      "x-api-key": process.env.SEGMIND_API_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ data_urls: [`data:${contentType};base64,${base64}`] }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || err.error || `Segmind storage upload error: ${res.status}`);
-  }
-
-  const data = await res.json();
-  const url = data.file_urls?.[0] || data.urls?.[0] || data.url;
-  if (!url) throw new Error(`Segmind storage upload returned no URL. Response keys: ${Object.keys(data).join(", ")}`);
-  return url;
-}
-
-// anchorUrl always originates from our own uploadToSegmindStorage() call and
-// is only ever echoed back by the client verbatim — but since it's still a
-// client-supplied field on a public route, restrict what the server will
-// actually fetch to Segmind's own domains rather than trusting it blindly
-// (an unrestricted server-side fetch of a client-given URL is an SSRF vector).
-function isAllowedSegmindUrl(url) {
-  try {
-    const { protocol, hostname } = new URL(url);
-    return protocol === "https:" && /(^|\.)segmind\.com$/.test(hostname);
-  } catch {
-    return false;
-  }
+// The client sends back whatever panel 1 returned as `anchorUrl` for every
+// later panel — that's a data: URI, so strip it back down to the raw base64
+// payload the API itself expects.
+function stripDataUriPrefix(value) {
+  const match = /^data:[^,]*;base64,(.*)$/s.exec(value);
+  return match ? match[1] : value;
 }
 
 export async function POST(request) {
@@ -143,23 +110,12 @@ export async function POST(request) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     return Response.json({ error: "Missing illustration prompt." }, { status: 400 });
   }
-  if (anchorUrl && !isAllowedSegmindUrl(anchorUrl)) {
-    return Response.json({ error: "Invalid reference image URL." }, { status: 400 });
-  }
 
   try {
-    if (anchorUrl) {
-      // anchorUrl is panel 1's own hosted URL — pass it straight to Segmind
-      // rather than fetching it ourselves first.
-      const base64 = await generateReferencedImage(prompt, anchorUrl);
-      return Response.json({ url: `data:image/png;base64,${base64}` });
-    }
-
-    // Panel 1: generate with no reference, then upload the result so every
-    // later panel can reuse it as a compact URL instead of a multi-MB blob.
-    const base64 = await generateBaseImage(prompt);
-    const url = await uploadToSegmindStorage(base64, "image/png");
-    return Response.json({ url });
+    const base64 = anchorUrl
+      ? await generateReferencedImage(prompt, stripDataUriPrefix(anchorUrl))
+      : await generateBaseImage(prompt);
+    return Response.json({ url: `data:image/png;base64,${base64}` });
   } catch (err) {
     // Log the raw diagnostic (can include Segmind response internals) server-side
     // only, matching /api/generate's error-sanitization — never forward it as-is.
