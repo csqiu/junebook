@@ -1,8 +1,8 @@
 // Without this, serverless platforms default to a short timeout (e.g. 10-15s
-// on Vercel) — fine for a single Segmind call, but panels 2+ now make two
-// sequential calls (fetch the anchor image, then a full Flux IP-Adapter
-// generation), which combined with GPU queueing under concurrent panel
-// requests can easily exceed that default and get killed mid-request.
+// on Vercel) — panel 1 makes two sequential Segmind calls (generate, then
+// upload to storage), and GPU queueing under up to 15 concurrent panel
+// requests can push any single call past that default and get it killed
+// mid-request.
 export const maxDuration = 300;
 
 const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable and child-friendly";
@@ -62,9 +62,13 @@ async function generateBaseImage(prompt) {
   return readSegmindImage(res);
 }
 
-// Panels 2+: Flux IP-Adapter, feeding panel 1's own image back in as the
+// Panels 2+: Flux IP-Adapter, feeding panel 1's own hosted URL back in as the
 // reference so the character stays visually consistent across the story.
-async function generateReferencedImage(prompt, referenceBase64) {
+// Passing the URL directly (rather than fetching it ourselves and re-sending
+// the bytes) lets Segmind's own infrastructure fetch it server-to-server —
+// the same pattern Neolemon's ip_image used, and a single hop per panel
+// instead of two.
+async function generateReferencedImage(prompt, referenceUrl) {
   const res = await fetch("https://api.segmind.com/v1/flux-ipadapter", {
     method: "POST",
     headers: {
@@ -74,7 +78,7 @@ async function generateReferencedImage(prompt, referenceBase64) {
     body: JSON.stringify({
       prompt: prompt + STYLE_TAG,
       negative_prompt: NEGATIVE_PROMPT,
-      image: referenceBase64,
+      image: referenceUrl,
       adapter_strength: ADAPTER_STRENGTH,
       steps: 20,
       guidance_scale: 3.5,
@@ -128,16 +132,6 @@ function isAllowedSegmindUrl(url) {
   }
 }
 
-async function fetchAsBase64(url) {
-  const res = await fetch(url, {
-    headers: { "x-api-key": process.env.SEGMIND_API_KEY },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch reference image: ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length === 0) throw new Error("Reference image fetch returned no data");
-  return buf.toString("base64");
-}
-
 export async function POST(request) {
   let body;
   try {
@@ -155,10 +149,9 @@ export async function POST(request) {
 
   try {
     if (anchorUrl) {
-      // anchorUrl is panel 1's own hosted URL — fetch it once per call rather
-      // than trust the client to resend the full image bytes each time.
-      const referenceBase64 = await fetchAsBase64(anchorUrl);
-      const base64 = await generateReferencedImage(prompt, referenceBase64);
+      // anchorUrl is panel 1's own hosted URL — pass it straight to Segmind
+      // rather than fetching it ourselves first.
+      const base64 = await generateReferencedImage(prompt, anchorUrl);
       return Response.json({ url: `data:image/png;base64,${base64}` });
     }
 
