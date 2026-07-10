@@ -158,6 +158,10 @@ export default function Home() {
       setLoadingMsg("Painting illustrations…");
       const total = storyData.panels.length;
 
+      // `url` is always a data: URI, safe for the browser to render directly
+      // with no extra fetch/auth. `anchorUrl` (only present in panel 1's
+      // response) is a Segmind-hosted URL meant for our own server to pass
+      // between calls — the browser never fetches it itself.
       async function fetchImage(prompt, anchorUrl) {
         const imgRes = await fetch("/api/image", {
           method: "POST",
@@ -165,15 +169,16 @@ export default function Home() {
           body: JSON.stringify({ prompt, anchorUrl }),
         });
         const imgData = await imgRes.json();
-        if (imgData.error) throw new Error(imgData.error);
-        return imgData.url;
+        if (imgData.error) throw new Error(imgData.stage ? `${imgData.error} (${imgData.stage})` : imgData.error);
+        return imgData;
       }
 
       // Panel 1 establishes the character (no reference image yet)
       let anchorUrl = null;
       try {
-        anchorUrl = await fetchImage(storyData.panels[0].illustration_prompt, null);
-        setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "done", imageUrl: anchorUrl } : p));
+        const imgData = await fetchImage(storyData.panels[0].illustration_prompt, null);
+        anchorUrl = imgData.anchorUrl;
+        setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "done", imageUrl: imgData.url } : p));
       } catch (err) {
         setPanels(prev => prev.map((p, i) => i === 0 ? { ...p, imageStatus: "error", imageError: err.message } : p));
       }
@@ -184,8 +189,8 @@ export default function Home() {
       await runWithConcurrencyLimit(storyData.panels.slice(1), PANEL_IMAGE_CONCURRENCY, async (panel, i) => {
         const idx = i + 1;
         try {
-          const url = await fetchImage(panel.illustration_prompt, anchorUrl);
-          setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "done", imageUrl: url } : p));
+          const imgData = await fetchImage(panel.illustration_prompt, anchorUrl);
+          setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "done", imageUrl: imgData.url } : p));
         } catch (imgErr) {
           setPanels(prev => prev.map((p, j) => j === idx ? { ...p, imageStatus: "error", imageError: imgErr.message } : p));
         }

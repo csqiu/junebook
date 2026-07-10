@@ -12,6 +12,9 @@ const NEGATIVE_PROMPT = "realistic proportions, adult body, adult face, mature f
 // Higher = more consistent character, but risks dragging along panel 1's pose/composition.
 const ADAPTER_STRENGTH = 0.65;
 
+// Returns { base64, contentType } — tracking the real content type (rather
+// than assuming PNG) matters because it gets re-declared when uploading to
+// Segmind storage; a mislabeled data: URI risks a corrupt/rejected upload.
 async function readSegmindImage(res) {
   const contentType = res.headers.get("content-type") || "";
 
@@ -27,12 +30,12 @@ async function readSegmindImage(res) {
     const data = await res.json();
     const base64 = data.image;
     if (!base64) throw new Error("No image returned from Segmind");
-    return base64;
+    return { base64, contentType: "image/png" };
   }
 
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length === 0) throw new Error("Empty image returned from Segmind");
-  return buf.toString("base64");
+  return { base64: buf.toString("base64"), contentType: contentType || "image/png" };
 }
 
 // Panel 1: Flux Dev, plain text-to-image — this is the same model that reliably
@@ -91,12 +94,11 @@ async function generateReferencedImage(prompt, referenceBase64) {
   return readSegmindImage(res);
 }
 
-// Every panel's generated image is uploaded to Segmind's own asset storage
-// and only the resulting URL is returned to the client. Returning the raw
-// base64 image directly in a JSON response was hitting a response-size
-// ceiling (confirmed live: panel 1 broke the moment its response switched
-// from a small URL to a full base64 data URI, and panels 2+ — which always
-// returned a data URI — never worked reliably at any point this session).
+// Used only to hand panel 1's image to later panels as a compact reference —
+// the browser never sees this URL (see POST handler). Restored the full
+// candidate-key fallback list that an earlier commit (7037870) confirmed was
+// needed live; a later rewrite-from-memory accidentally narrowed it to just
+// three keys, silently dropping two that had been verified necessary.
 async function uploadToSegmindStorage(base64, contentType) {
   const res = await fetch("https://workflows-api.segmind.com/upload-asset", {
     method: "POST",
@@ -113,20 +115,22 @@ async function uploadToSegmindStorage(base64, contentType) {
   }
 
   const data = await res.json();
-  const url = data.file_urls?.[0] || data.urls?.[0] || data.url;
+  const url = data.file_urls?.[0] || data.urls?.[0] || data.url || data.data_urls?.[0] || data.assets?.[0]?.url;
   if (!url) throw new Error(`Segmind storage upload returned no URL. Response keys: ${Object.keys(data).join(", ")}`);
   return url;
 }
 
 // anchorUrl always originates from our own uploadToSegmindStorage() call and
 // is only ever echoed back by the client verbatim — but since it's still a
-// client-supplied field on a public route, restrict what the server will
-// actually fetch to Segmind's own domains rather than trusting it blindly
-// (an unrestricted server-side fetch of a client-given URL is an SSRF vector).
-function isAllowedSegmindUrl(url) {
+// client-supplied field on a public route, block obviously-internal targets
+// rather than allowlisting a specific hostname we've never actually confirmed
+// (an earlier *.segmind.com-only allowlist risked silently rejecting a
+// legitimate asset URL on a different host, e.g. a CDN Segmind fronts).
+function isSafeReferenceUrl(url) {
   try {
     const { protocol, hostname } = new URL(url);
-    return protocol === "https:" && /(^|\.)segmind\.com$/.test(hostname);
+    if (protocol !== "https:") return false;
+    return !/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[::1\])/i.test(hostname);
   } catch {
     return false;
   }
@@ -137,9 +141,23 @@ async function fetchAsBase64(url) {
     headers: { "x-api-key": process.env.SEGMIND_API_KEY },
   });
   if (!res.ok) throw new Error(`Failed to fetch reference image: ${res.status}`);
+  const contentType = res.headers.get("content-type") || "image/png";
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length === 0) throw new Error("Reference image fetch returned no data");
-  return buf.toString("base64");
+  return { base64: buf.toString("base64"), contentType };
+}
+
+// Tags a thrown error with which stage produced it, so a failure is
+// diagnosable from the client-visible response alone — every architecture
+// change made earlier this session was a guess based on an ambiguous "load
+// failed" browser message with no way to tell which of 2-3 sequential
+// Segmind calls actually failed.
+async function runStage(name, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    throw Object.assign(new Error(err.message), { stage: name });
+  }
 }
 
 export async function POST(request) {
@@ -153,20 +171,36 @@ export async function POST(request) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     return Response.json({ error: "Missing illustration prompt." }, { status: 400 });
   }
-  if (anchorUrl && !isAllowedSegmindUrl(anchorUrl)) {
-    return Response.json({ error: "Invalid reference image URL." }, { status: 400 });
+  if (anchorUrl && !isSafeReferenceUrl(anchorUrl)) {
+    return Response.json({ error: "Invalid reference image URL.", stage: "validate_anchor" }, { status: 400 });
   }
 
   try {
-    const base64 = anchorUrl
-      ? await generateReferencedImage(prompt, await fetchAsBase64(anchorUrl))
-      : await generateBaseImage(prompt);
-    const url = await uploadToSegmindStorage(base64, "image/png");
-    return Response.json({ url });
+    let base64, contentType;
+    if (anchorUrl) {
+      const reference = await runStage("fetch_reference", () => fetchAsBase64(anchorUrl));
+      ({ base64, contentType } = await runStage("generate_referenced", () => generateReferencedImage(prompt, reference.base64)));
+    } else {
+      ({ base64, contentType } = await runStage("generate_base", () => generateBaseImage(prompt)));
+    }
+
+    // The browser only ever gets a data: URI (no network fetch, no auth
+    // needed) — it never touches the Segmind storage URL directly. Only
+    // panel 1's image needs to become a reusable reference, so only that
+    // path uploads and returns an anchorUrl for the client to pass along.
+    const response = { url: `data:${contentType};base64,${base64}` };
+    if (!anchorUrl) {
+      response.anchorUrl = await runStage("upload", () => uploadToSegmindStorage(base64, contentType));
+    }
+    return Response.json(response);
   } catch (err) {
     // Log the raw diagnostic (can include Segmind response internals) server-side
     // only, matching /api/generate's error-sanitization — never forward it as-is.
-    console.error("Image generation failed:", err?.message);
-    return Response.json({ error: "Could not generate this illustration. Please try again." }, { status: 500 });
+    // The stage name itself is safe to return to the client, unlike err.message.
+    console.error(`Image generation failed at stage "${err.stage || "unknown"}":`, err.message);
+    return Response.json(
+      { error: "Could not generate this illustration. Please try again.", stage: err.stage || "unknown" },
+      { status: 500 }
+    );
   }
 }
