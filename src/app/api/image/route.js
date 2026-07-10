@@ -1,7 +1,7 @@
 // Without this, serverless platforms default to a short timeout (e.g. 10-15s
-// on Vercel) — a single Flux generation call plus GPU queueing under up to
-// 15 concurrent panel requests can push past that default and get killed
-// mid-request.
+// on Vercel) — each panel now makes two or three sequential Segmind calls,
+// and GPU queueing under up to 15 concurrent panel requests can push any
+// single one past that default and get it killed mid-request.
 export const maxDuration = 300;
 
 const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable and child-friendly";
@@ -91,12 +91,55 @@ async function generateReferencedImage(prompt, referenceBase64) {
   return readSegmindImage(res);
 }
 
-// The client sends back whatever panel 1 returned as `anchorUrl` for every
-// later panel — that's a data: URI, so strip it back down to the raw base64
-// payload the API itself expects.
-function stripDataUriPrefix(value) {
-  const match = /^data:[^,]*;base64,(.*)$/s.exec(value);
-  return match ? match[1] : value;
+// Every panel's generated image is uploaded to Segmind's own asset storage
+// and only the resulting URL is returned to the client. Returning the raw
+// base64 image directly in a JSON response was hitting a response-size
+// ceiling (confirmed live: panel 1 broke the moment its response switched
+// from a small URL to a full base64 data URI, and panels 2+ — which always
+// returned a data URI — never worked reliably at any point this session).
+async function uploadToSegmindStorage(base64, contentType) {
+  const res = await fetch("https://workflows-api.segmind.com/upload-asset", {
+    method: "POST",
+    headers: {
+      "x-api-key": process.env.SEGMIND_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ data_urls: [`data:${contentType};base64,${base64}`] }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.error || `Segmind storage upload error: ${res.status}`);
+  }
+
+  const data = await res.json();
+  const url = data.file_urls?.[0] || data.urls?.[0] || data.url;
+  if (!url) throw new Error(`Segmind storage upload returned no URL. Response keys: ${Object.keys(data).join(", ")}`);
+  return url;
+}
+
+// anchorUrl always originates from our own uploadToSegmindStorage() call and
+// is only ever echoed back by the client verbatim — but since it's still a
+// client-supplied field on a public route, restrict what the server will
+// actually fetch to Segmind's own domains rather than trusting it blindly
+// (an unrestricted server-side fetch of a client-given URL is an SSRF vector).
+function isAllowedSegmindUrl(url) {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === "https:" && /(^|\.)segmind\.com$/.test(hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function fetchAsBase64(url) {
+  const res = await fetch(url, {
+    headers: { "x-api-key": process.env.SEGMIND_API_KEY },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch reference image: ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length === 0) throw new Error("Reference image fetch returned no data");
+  return buf.toString("base64");
 }
 
 export async function POST(request) {
@@ -110,12 +153,16 @@ export async function POST(request) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     return Response.json({ error: "Missing illustration prompt." }, { status: 400 });
   }
+  if (anchorUrl && !isAllowedSegmindUrl(anchorUrl)) {
+    return Response.json({ error: "Invalid reference image URL." }, { status: 400 });
+  }
 
   try {
     const base64 = anchorUrl
-      ? await generateReferencedImage(prompt, stripDataUriPrefix(anchorUrl))
+      ? await generateReferencedImage(prompt, await fetchAsBase64(anchorUrl))
       : await generateBaseImage(prompt);
-    return Response.json({ url: `data:image/png;base64,${base64}` });
+    const url = await uploadToSegmindStorage(base64, "image/png");
+    return Response.json({ url });
   } catch (err) {
     // Log the raw diagnostic (can include Segmind response internals) server-side
     // only, matching /api/generate's error-sanitization — never forward it as-is.
