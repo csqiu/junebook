@@ -1,16 +1,11 @@
 // Without this, serverless platforms default to a short timeout (e.g. 10-15s
-// on Vercel) — each panel now makes two or three sequential Segmind calls,
-// and GPU queueing under up to 15 concurrent panel requests can push any
-// single one past that default and get it killed mid-request.
+// on Vercel) — image generation plus GPU queueing under up to 15 concurrent
+// panel requests can push past that default and get killed mid-request.
 export const maxDuration = 300;
 
 const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable and child-friendly";
 
 const NEGATIVE_PROMPT = "realistic proportions, adult body, adult face, mature facial features, gaunt face, long adult limbs, fine art painting, gallery painting, photorealistic, hyper-detailed rendering, 3D render, flat vector art, hard uniform outlines, dark backgrounds, cool colors, blue tones, anime, manga, complex cluttered background, duplicate characters, multiple copies of same character, clones, extra limbs, text, watermark";
-
-// How strongly panels 2+ follow the panel-1 reference vs. their own scene prompt.
-// Higher = more consistent character, but risks dragging along panel 1's pose/composition.
-const ADAPTER_STRENGTH = 0.65;
 
 // Returns { base64, contentType } — tracking the real content type (rather
 // than assuming PNG) matters because it gets re-declared when uploading to
@@ -38,67 +33,38 @@ async function readSegmindImage(res) {
   return { base64: buf.toString("base64"), contentType: contentType || "image/png" };
 }
 
-// Panel 1: Flux Dev, plain text-to-image — this is the same model that reliably
-// hit the intended watercolor/ink-wash style when it ran through fal.ai, now
-// called directly on Segmind instead of pulling in a second provider.
-async function generateBaseImage(prompt) {
-  const res = await fetch("https://api.segmind.com/v1/flux-dev", {
+// Neolemon V3 generates every panel. With no ip_image, it generates the
+// initial character from text alone; with ip_image set to a URL, it
+// generates a new scene using that character as reference — Segmind's own
+// servers fetch the URL, we never have to (unlike Flux IP-Adapter, which
+// rejected a URL and needed the actual base64 bytes sent directly).
+async function generateNeolemonImage(prompt, ipImageUrl) {
+  const body = {
+    prompt: prompt + STYLE_TAG,
+    negative_prompt: NEGATIVE_PROMPT,
+    steps: 20,
+    guidance_scale: 3,
+    width: 1024,
+    height: 768,
+    seed: Math.floor(Math.random() * 2147483647),
+    base64: true,
+  };
+  if (ipImageUrl) body.ip_image = ipImageUrl;
+
+  const res = await fetch("https://api.segmind.com/v1/consistent-character-AI-neolemon-v3", {
     method: "POST",
     headers: {
       "x-api-key": process.env.SEGMIND_API_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      prompt: prompt + STYLE_TAG,
-      negative_prompt: NEGATIVE_PROMPT,
-      steps: 20,
-      guidance_scale: 3.5,
-      width: 1024,
-      height: 768,
-      seed: Math.floor(Math.random() * 2147483647),
-      enable_safety_checker: true,
-      base64: true,
-    }),
-  });
-
-  return readSegmindImage(res);
-}
-
-// Panels 2+: Flux IP-Adapter, feeding panel 1's own image data back in as the
-// reference so the character stays visually consistent across the story.
-// flux-ipadapter's `image` field rejects a URL ("The string did not match
-// the expected pattern") — confirmed live — so this needs the actual base64
-// bytes, unlike Neolemon's ip_image which took a URL.
-async function generateReferencedImage(prompt, referenceBase64) {
-  const res = await fetch("https://api.segmind.com/v1/flux-ipadapter", {
-    method: "POST",
-    headers: {
-      "x-api-key": process.env.SEGMIND_API_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      prompt: prompt + STYLE_TAG,
-      negative_prompt: NEGATIVE_PROMPT,
-      image: referenceBase64,
-      adapter_strength: ADAPTER_STRENGTH,
-      steps: 20,
-      guidance_scale: 3.5,
-      width: 1024,
-      height: 768,
-      seed: Math.floor(Math.random() * 2147483647),
-      enable_safety_checker: true,
-      base64: true,
-    }),
+    body: JSON.stringify(body),
   });
 
   return readSegmindImage(res);
 }
 
 // Used only to hand panel 1's image to later panels as a compact reference —
-// the browser never sees this URL (see POST handler). Restored the full
-// candidate-key fallback list that an earlier commit (7037870) confirmed was
-// needed live; a later rewrite-from-memory accidentally narrowed it to just
-// three keys, silently dropping two that had been verified necessary.
+// the browser never sees this URL (see POST handler).
 async function uploadToSegmindStorage(base64, contentType) {
   const res = await fetch("https://workflows-api.segmind.com/upload-asset", {
     method: "POST",
@@ -123,9 +89,7 @@ async function uploadToSegmindStorage(base64, contentType) {
 // anchorUrl always originates from our own uploadToSegmindStorage() call and
 // is only ever echoed back by the client verbatim — but since it's still a
 // client-supplied field on a public route, block obviously-internal targets
-// rather than allowlisting a specific hostname we've never actually confirmed
-// (an earlier *.segmind.com-only allowlist risked silently rejecting a
-// legitimate asset URL on a different host, e.g. a CDN Segmind fronts).
+// rather than allowlisting a specific hostname we've never actually confirmed.
 function isSafeReferenceUrl(url) {
   try {
     const { protocol, hostname } = new URL(url);
@@ -136,22 +100,8 @@ function isSafeReferenceUrl(url) {
   }
 }
 
-async function fetchAsBase64(url) {
-  const res = await fetch(url, {
-    headers: { "x-api-key": process.env.SEGMIND_API_KEY },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch reference image: ${res.status}`);
-  const contentType = res.headers.get("content-type") || "image/png";
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length === 0) throw new Error("Reference image fetch returned no data");
-  return { base64: buf.toString("base64"), contentType };
-}
-
 // Tags a thrown error with which stage produced it, so a failure is
-// diagnosable from the client-visible response alone — every architecture
-// change made earlier this session was a guess based on an ambiguous "load
-// failed" browser message with no way to tell which of 2-3 sequential
-// Segmind calls actually failed.
+// diagnosable from the client-visible response alone.
 async function runStage(name, fn) {
   try {
     return await fn();
@@ -176,13 +126,10 @@ export async function POST(request) {
   }
 
   try {
-    let base64, contentType;
-    if (anchorUrl) {
-      const reference = await runStage("fetch_reference", () => fetchAsBase64(anchorUrl));
-      ({ base64, contentType } = await runStage("generate_referenced", () => generateReferencedImage(prompt, reference.base64)));
-    } else {
-      ({ base64, contentType } = await runStage("generate_base", () => generateBaseImage(prompt)));
-    }
+    const { base64, contentType } = await runStage(
+      anchorUrl ? "generate_referenced" : "generate_base",
+      () => generateNeolemonImage(prompt, anchorUrl)
+    );
 
     // The browser only ever gets a data: URI (no network fetch, no auth
     // needed) — it never touches the Segmind storage URL directly. Only

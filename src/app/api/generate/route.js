@@ -47,6 +47,18 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
             type: "string",
             description: "One sentence describing the main character's permanent visual appearance, for an image generation model with no other context. Must start by stating age and gender or species explicitly (e.g. 'A young girl...', 'A little boy...', 'A small rabbit...') — an image model will default to a generic adult if this is left implicit. Then describe size, colors, clothing, hairstyle, and one distinctive feature."
           },
+          supporting_characters: {
+            type: "array",
+            description: "Other NAMED characters (not the main character) who appear in more than one panel and need a consistent visual appearance across illustrations — e.g. a sidekick, a family member, a recurring friend. Omit characters who only appear once or are unnamed background figures. Empty array if there are none.",
+            items: {
+              type: "object",
+              required: ["name", "description"],
+              properties: {
+                name:        { type: "string", description: "The character's name exactly as it appears in chinese_text." },
+                description: { type: "string", description: "One sentence describing this character's permanent visual appearance for an image model with no other context. Must start by stating age and gender or species explicitly, then size, colors, clothing, and one distinctive feature." }
+              }
+            }
+          },
           panels: {
             type: "array",
             items: {
@@ -54,7 +66,12 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
               required: ["panel_number", "illustration_prompt", "chinese_text", "character_pinyin", "english_translation", "vocabulary"],
               properties: {
                 panel_number:        { type: "integer" },
-                illustration_prompt: { type: "string", description: "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT describe the character's appearance. Under 40 words." },
+                illustration_prompt: { type: "string", description: "Vivid scene for a children's watercolor illustration: setting, action, mood, colors. Do NOT describe any character's appearance. Under 40 words." },
+                characters_in_panel: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Names of any supporting_characters (by their exact `name`) who physically appear in this panel's scene. Do not include the main character — they're always assumed present. Empty array if no supporting characters appear in this panel."
+                },
                 chinese_text:        { type: "string" },
                 character_pinyin: {
                   type: "array",
@@ -122,7 +139,7 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
       return Response.json({ error: "Story panels were missing. Please try again." }, { status: 500 });
     }
 
-    // ── 5. Inject character sheet into illustration prompts ───────────────
+    // ── 5. Inject character descriptions into illustration prompts ─────────
     // Repeats the user's literal main-character text verbatim alongside Claude's
     // character_sheet paraphrase — a redundant anchor in case the paraphrase drops
     // a detail (age/gender in particular) that the image model needs to be told
@@ -134,12 +151,30 @@ Include 2-4 vocabulary words per panel. Make the story charming, culturally auth
     const mainCharText = (mainChar || "a little rabbit").trim().replace(/[.!?]+$/, "");
     const mainCharLine = mainCharText ? ` Main character: ${mainCharText}.` : "";
     const characterSheetLine = story.character_sheet ? ` ${story.character_sheet}` : "";
-    if (mainCharLine || characterSheetLine) {
-      story.panels = story.panels.map(p => ({
+
+    // Only inject a supporting character's description into panels where they
+    // actually appear, so prompts stay focused instead of listing every
+    // character in the story on every single panel.
+    const supportingCharacters = Array.isArray(story.supporting_characters) ? story.supporting_characters : [];
+    const supportingDescByName = new Map(
+      supportingCharacters.filter(c => c?.name && c?.description).map(c => [c.name, c.description])
+    );
+
+    story.panels = story.panels.map(p => {
+      const panelCharacterNames = Array.isArray(p.characters_in_panel) ? p.characters_in_panel : [];
+      const supportingLines = panelCharacterNames
+        .map(name => supportingDescByName.get(name))
+        .filter(Boolean)
+        .map(desc => ` ${desc}`)
+        .join("");
+      const hasAnyCharacterInfo = mainCharLine || characterSheetLine || supportingLines;
+      return {
         ...p,
-        illustration_prompt: `Character reference (use consistently):${mainCharLine}${characterSheetLine} Scene: ${p.illustration_prompt}`,
-      }));
-    }
+        illustration_prompt: hasAnyCharacterInfo
+          ? `Character reference (use consistently):${mainCharLine}${characterSheetLine}${supportingLines} Scene: ${p.illustration_prompt}`
+          : p.illustration_prompt,
+      };
+    });
 
     return Response.json(story);
 
