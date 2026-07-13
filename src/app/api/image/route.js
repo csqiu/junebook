@@ -3,14 +3,15 @@
 // panel requests can push past that default and get killed mid-request.
 export const maxDuration = 300;
 
-// Front-loaded so it's read (and weighted) before any character/scene
-// specifics. Neolemon's own stated purpose is generating character
-// *reference sheets* — multiple poses/turnarounds for animation and game
-// production — so its default bias needs to be actively steered toward a
-// single storybook scene, not just described at the end of the prompt.
-const STYLE_LEAD_IN = "A single scene from a children's picture book, cute cartoon illustration style, not a character reference sheet — ";
-
-const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable, friendly, and child-friendly storybook character design";
+// `prompt` (built in generate/route.js) always starts with the character's
+// identity — "Character reference (use consistently): Main character: ...
+// Scene: ..." — and that MUST stay in the first-token position: an earlier
+// version of this file prepended a style preamble in front of it, which
+// consistently pushed image generation toward a generic default character
+// (reported: every panel 1 came out as some variant of a bearded man,
+// regardless of the requested character) instead of the requested one.
+// Style framing belongs after the identity info, not before it.
+const STYLE_TAG = ", cute watercolor cartoon children's book illustration — a single storybook scene, NOT a character reference sheet or turnaround — soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable, friendly, and child-friendly storybook character design";
 
 // Includes terms specifically countering Neolemon's own native "character
 // sheet" output tendency (multiple poses/views, turnaround, neutral studio
@@ -50,7 +51,7 @@ async function readSegmindImage(res) {
 // rejected a URL and needed the actual base64 bytes sent directly).
 async function generateNeolemonImage(prompt, ipImageUrl) {
   const body = {
-    prompt: STYLE_LEAD_IN + prompt + STYLE_TAG,
+    prompt: prompt + STYLE_TAG,
     negative_prompt: NEGATIVE_PROMPT,
     steps: 20,
     guidance_scale: 5,
