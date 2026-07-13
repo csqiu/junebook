@@ -3,9 +3,19 @@
 // panel requests can push past that default and get killed mid-request.
 export const maxDuration = 300;
 
-const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable and child-friendly";
+// Front-loaded so it's read (and weighted) before any character/scene
+// specifics. Neolemon's own stated purpose is generating character
+// *reference sheets* — multiple poses/turnarounds for animation and game
+// production — so its default bias needs to be actively steered toward a
+// single storybook scene, not just described at the end of the prompt.
+const STYLE_LEAD_IN = "A single scene from a children's picture book, cute cartoon illustration style, not a character reference sheet — ";
 
-const NEGATIVE_PROMPT = "realistic proportions, adult body, adult face, mature facial features, gaunt face, long adult limbs, fine art painting, gallery painting, photorealistic, hyper-detailed rendering, 3D render, flat vector art, hard uniform outlines, dark backgrounds, cool colors, blue tones, anime, manga, complex cluttered background, duplicate characters, multiple copies of same character, clones, extra limbs, text, watermark";
+const STYLE_TAG = ", cute watercolor cartoon children's book illustration, soft rounded chibi proportions with a big head and small body, large sparkling expressive eyes, gentle soft-edged watercolor washes, warm inviting palette, simple clean minimal background, whimsical and tender mood, Chinese picture-book inspired, adorable, friendly, and child-friendly storybook character design";
+
+// Includes terms specifically countering Neolemon's own native "character
+// sheet" output tendency (multiple poses/views, turnaround, neutral studio
+// background) in addition to the realism/proportions issues seen earlier.
+const NEGATIVE_PROMPT = "character reference sheet, character model sheet, turnaround, multiple views, multiple poses, pose sheet, grid layout, neutral studio background, realistic proportions, adult body, adult face, mature facial features, gaunt face, long adult limbs, fine art painting, gallery painting, photorealistic, hyper-detailed rendering, 3D render, flat vector art, hard uniform outlines, dark backgrounds, cool colors, blue tones, anime, manga, complex cluttered background, duplicate characters, multiple copies of same character, clones, extra limbs, text, watermark";
 
 // Returns { base64, contentType } — tracking the real content type (rather
 // than assuming PNG) matters because it gets re-declared when uploading to
@@ -40,10 +50,10 @@ async function readSegmindImage(res) {
 // rejected a URL and needed the actual base64 bytes sent directly).
 async function generateNeolemonImage(prompt, ipImageUrl) {
   const body = {
-    prompt: prompt + STYLE_TAG,
+    prompt: STYLE_LEAD_IN + prompt + STYLE_TAG,
     negative_prompt: NEGATIVE_PROMPT,
     steps: 20,
-    guidance_scale: 3,
+    guidance_scale: 5,
     width: 1024,
     height: 768,
     seed: Math.floor(Math.random() * 2147483647),
